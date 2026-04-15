@@ -78,7 +78,8 @@ function NewsPage() {
     setLoadingNews(false);
   };
 
-  const canManageNews = userRole === "organizer";
+  const canManageNews =
+    userRole === "organizer" || userRole === "staff";
 
   const sortedNews = useMemo(() => {
     return [...newsItems].sort(
