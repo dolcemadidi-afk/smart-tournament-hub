@@ -31,9 +31,6 @@ function AppHeader() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      console.log("initial auth user id:", user?.id);
-      console.log("initial auth user email:", user?.email);
-
       setUser(user || null);
     };
 
@@ -43,10 +40,6 @@ function AppHeader() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       const nextUser = session?.user || null;
-
-      console.log("auth state change user id:", nextUser?.id);
-      console.log("auth state change user email:", nextUser?.email);
-
       setUser(nextUser);
     });
 
@@ -84,17 +77,11 @@ function AppHeader() {
       try {
         setRoleLoaded(false);
 
-        console.log("before profile query");
-
         const { data: profile, error } = await supabase
           .from("profiles")
           .select("id, email, role")
           .eq("id", user.id)
           .maybeSingle();
-
-        console.log("profile query result:", profile);
-        console.log("profile query error:", error);
-        console.log("after profile query");
 
         if (error) {
           setUserRole(null);
@@ -370,7 +357,6 @@ function AppHeader() {
 const tickerWrapperStyle = {
   width: "100%",
   background: "#1476b6",
-  borderBottom: "1px solid rgba(255,255,255,0.12)",
   overflow: "hidden",
   height: "34px",
   display: "flex",

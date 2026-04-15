@@ -2,11 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../../services/supabase";
 import { uploadImage } from "../../utils/uploadImage";
-import {
-  createNewsItem,
-  getNewsFromStorage,
-  saveNewsToStorage,
-} from "../../utils/newsStorage";
 
 function NewsPage() {
   const [newsItems, setNewsItems] = useState([]);
@@ -14,6 +9,8 @@ function NewsPage() {
   const [showEditor, setShowEditor] = useState(true);
   const [userRole, setUserRole] = useState(null);
   const [activeCategory, setActiveCategory] = useState("All");
+  const [loadingNews, setLoadingNews] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   const [title, setTitle] = useState("");
   const [coverImage, setCoverImage] = useState("");
@@ -23,50 +20,63 @@ function NewsPage() {
   ]);
 
   useEffect(() => {
-    const stored = getNewsFromStorage();
-
-    const normalized = (stored || []).map((item) => ({
-      ...item,
-      title: item?.title ?? "",
-      coverImage: item?.coverImage ?? "",
-      category: item?.category ?? "Football",
-      createdAt: item?.createdAt ?? new Date().toISOString(),
-      blocks: Array.isArray(item?.blocks)
-        ? item.blocks.map((block, index) => ({
-            id: block?.id ?? `${Date.now()}-${index}`,
-            type: block?.type ?? "paragraph",
-            content: block?.content ?? "",
-          }))
-        : [],
-    }));
-
-    setNewsItems(normalized);
-  }, []);
-
-  useEffect(() => {
-    const loadRole = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
-
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Error loading role:", error);
-        return;
-      }
-
-      setUserRole(profile?.role || null);
-    };
-
     loadRole();
+    fetchNews();
   }, []);
+
+  const loadRole = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error loading role:", error);
+      return;
+    }
+
+    setUserRole(profile?.role || null);
+  };
+
+  const normalizeNewsItem = (item) => ({
+    id: item?.id,
+    title: item?.title ?? "",
+    coverImage: item?.cover_image ?? "",
+    category: item?.category ?? "Football",
+    createdAt: item?.created_at ?? new Date().toISOString(),
+    blocks: Array.isArray(item?.blocks)
+      ? item.blocks.map((block, index) => ({
+          id: block?.id ?? `${Date.now()}-${index}`,
+          type: block?.type ?? "paragraph",
+          content: block?.content ?? "",
+        }))
+      : [],
+  });
+
+  const fetchNews = async () => {
+    setLoadingNews(true);
+
+    const { data, error } = await supabase
+      .from("news")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching news:", error);
+      setLoadingNews(false);
+      return;
+    }
+
+    setNewsItems((data || []).map(normalizeNewsItem));
+    setLoadingNews(false);
+  };
 
   const canManageNews = userRole === "organizer";
 
@@ -128,7 +138,7 @@ function NewsPage() {
     setBlocks((prev) => prev.filter((block) => block.id !== id));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!canManageNews) return;
@@ -155,35 +165,42 @@ function NewsPage() {
       return;
     }
 
-    let updatedNews;
+    setSubmitting(true);
+
+    const payload = {
+      title: title.trim(),
+      cover_image: coverImage.trim(),
+      category: category.trim(),
+      blocks: cleanBlocks,
+    };
 
     if (editingId) {
-      updatedNews = newsItems.map((item) =>
-        item.id === editingId
-          ? {
-              ...item,
-              title: title.trim(),
-              coverImage: coverImage.trim(),
-              category: category.trim(),
-              blocks: cleanBlocks,
-            }
-          : item
-      );
-    } else {
-      const newItem = createNewsItem({
-        title: title.trim(),
-        coverImage: coverImage.trim(),
-        category: category.trim(),
-        blocks: cleanBlocks,
-      });
+      const { error } = await supabase
+        .from("news")
+        .update(payload)
+        .eq("id", editingId);
 
-      updatedNews = [newItem, ...newsItems];
+      if (error) {
+        console.error("Error updating news:", error);
+        alert("Failed to update news");
+        setSubmitting(false);
+        return;
+      }
+    } else {
+      const { error } = await supabase.from("news").insert([payload]);
+
+      if (error) {
+        console.error("Error creating news:", error);
+        alert("Failed to publish news");
+        setSubmitting(false);
+        return;
+      }
     }
 
-    setNewsItems(updatedNews);
-    saveNewsToStorage(updatedNews);
+    await fetchNews();
     resetForm();
     setShowEditor(false);
+    setSubmitting(false);
   };
 
   const handleEdit = (item) => {
@@ -211,15 +228,21 @@ function NewsPage() {
     });
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (!canManageNews) return;
 
     const confirmDelete = window.confirm("Delete this news item?");
     if (!confirmDelete) return;
 
-    const updated = newsItems.filter((item) => item.id !== id);
-    setNewsItems(updated);
-    saveNewsToStorage(updated);
+    const { error } = await supabase.from("news").delete().eq("id", id);
+
+    if (error) {
+      console.error("Error deleting news:", error);
+      alert("Failed to delete news");
+      return;
+    }
+
+    await fetchNews();
 
     if (editingId === id) {
       resetForm();
@@ -578,8 +601,21 @@ function NewsPage() {
                       style={formActionsStyle}
                       className="news-form-actions"
                     >
-                      <button type="submit" style={{ ...primaryButton, flex: 1 }}>
-                        {editingId ? "Update News" : "Publish News"}
+                      <button
+                        type="submit"
+                        disabled={submitting}
+                        style={{
+                          ...primaryButton,
+                          flex: 1,
+                          opacity: submitting ? 0.7 : 1,
+                          cursor: submitting ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {submitting
+                          ? "Saving..."
+                          : editingId
+                          ? "Update News"
+                          : "Publish News"}
                       </button>
 
                       {editingId && (
@@ -620,131 +656,144 @@ function NewsPage() {
               })}
             </div>
 
-            {featuredNews ? (
-              <div style={featuredCardStyle} className="featured-card">
-                <Link
-                  to={`/news/${featuredNews.id}`}
-                  style={{ textDecoration: "none", color: "inherit" }}
-                >
-                  <div style={featuredImageWrapStyle}>
-                    {featuredNews.coverImage ? (
-                      <img
-                        src={featuredNews.coverImage}
-                        alt={featuredNews.title}
-                        style={featuredImageStyle}
-                        className="featured-image"
-                      />
-                    ) : (
-                      <div style={featuredPlaceholderStyle}>No image</div>
-                    )}
-                  </div>
-
-                  <div style={featuredContentStyle}>
-                    <div style={featuredCategoryStyle}>
-                      {featuredNews.category}
+            {loadingNews ? (
+              <div style={emptyStateStyle}>
+                <div style={emptyStateTitleStyle}>Loading news...</div>
+              </div>
+            ) : featuredNews ? (
+              <>
+                <div style={featuredCardStyle} className="featured-card">
+                  <Link
+                    to={`/news/${featuredNews.id}`}
+                    style={{ textDecoration: "none", color: "inherit" }}
+                  >
+                    <div style={featuredImageWrapStyle}>
+                      {featuredNews.coverImage ? (
+                        <img
+                          src={featuredNews.coverImage}
+                          alt={featuredNews.title}
+                          style={featuredImageStyle}
+                          className="featured-image"
+                        />
+                      ) : (
+                        <div style={featuredPlaceholderStyle}>No image</div>
+                      )}
                     </div>
 
-                    <div style={featuredTitleStyle} className="featured-title">
-                      {featuredNews.title}
-                    </div>
-
-                    <div style={featuredMetaRowStyle}>
-                      <div style={featuredAuthorWrapStyle}>
-                        <div style={miniAvatarStyle}>👤</div>
-                        <span style={metaTextStyle}>Smart Sport Consulting</span>
+                    <div style={featuredContentStyle}>
+                      <div style={featuredCategoryStyle}>
+                        {featuredNews.category}
                       </div>
 
-                      <div style={featuredMetaRightStyle}>
-                        <span style={metaTextStyle}>
-                          {formatNewsDate(featuredNews.createdAt)}
-                        </span>
+                      <div style={featuredTitleStyle} className="featured-title">
+                        {featuredNews.title}
+                      </div>
+
+                      <div style={featuredMetaRowStyle}>
+                        <div style={featuredAuthorWrapStyle}>
+                          <div style={miniAvatarStyle}>👤</div>
+                          <span style={metaTextStyle}>Smart Sport Consulting</span>
+                        </div>
+
+                        <div style={featuredMetaRightStyle}>
+                          <span style={metaTextStyle}>
+                            {formatNewsDate(featuredNews.createdAt)}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </Link>
+                  </Link>
 
-                {canManageNews && (
-                  <div style={featuredActionsStyle} className="news-card-actions">
-                    <button
-                      onClick={() => handleEdit(featuredNews)}
-                      style={editButtonStyle}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(featuredNews.id)}
-                      style={deleteButtonStyle}
-                    >
-                      Delete
-                    </button>
+                  {canManageNews && (
+                    <div style={featuredActionsStyle} className="news-card-actions">
+                      <button
+                        onClick={() => handleEdit(featuredNews)}
+                        style={editButtonStyle}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(featuredNews.id)}
+                        style={deleteButtonStyle}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {otherNews.length > 0 && (
+                  <div style={miniListWrapStyle} className="news-list-grid">
+                    {otherNews.map((item) => (
+                      <div
+                        key={item.id}
+                        style={miniCardStyle}
+                        className="news-mini-card"
+                      >
+                        <Link
+                          to={`/news/${item.id}`}
+                          style={{
+                            textDecoration: "none",
+                            color: "inherit",
+                            display: "contents",
+                          }}
+                        >
+                          <div style={miniThumbWrapStyle}>
+                            {item.coverImage ? (
+                              <img
+                                src={item.coverImage}
+                                alt={item.title}
+                                style={miniThumbStyle}
+                                className="news-mini-thumb"
+                              />
+                            ) : (
+                              <div style={miniThumbPlaceholderStyle}>No image</div>
+                            )}
+                          </div>
+
+                          <div style={miniContentStyle}>
+                            <div style={miniTitleStyle} className="news-mini-title">
+                              {item.title}
+                            </div>
+
+                            <div style={miniMetaStyle}>
+                              <span>{formatNewsDate(item.createdAt)}</span>
+                              <span>•</span>
+                              <span>{getReadingTime(item)}</span>
+                            </div>
+                          </div>
+                        </Link>
+
+                        {canManageNews && (
+                          <div
+                            style={miniActionRowStyle}
+                            className="news-card-actions"
+                          >
+                            <button
+                              onClick={() => handleEdit(item)}
+                              style={miniEditButtonStyle}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDelete(item.id)}
+                              style={miniDeleteButtonStyle}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
-              </div>
+              </>
             ) : (
               <div style={emptyStateStyle}>
                 <div style={emptyStateTitleStyle}>No news yet</div>
                 <div style={emptyStateTextStyle}>
                   Published articles will appear here.
                 </div>
-              </div>
-            )}
-
-            {otherNews.length > 0 && (
-              <div style={miniListWrapStyle} className="news-list-grid">
-                {otherNews.map((item) => (
-                  <div key={item.id} style={miniCardStyle} className="news-mini-card">
-                    <Link
-                      to={`/news/${item.id}`}
-                      style={{
-                        textDecoration: "none",
-                        color: "inherit",
-                        display: "contents",
-                      }}
-                    >
-                      <div style={miniThumbWrapStyle}>
-                        {item.coverImage ? (
-                          <img
-                            src={item.coverImage}
-                            alt={item.title}
-                            style={miniThumbStyle}
-                            className="news-mini-thumb"
-                          />
-                        ) : (
-                          <div style={miniThumbPlaceholderStyle}>No image</div>
-                        )}
-                      </div>
-
-                      <div style={miniContentStyle}>
-                        <div style={miniTitleStyle} className="news-mini-title">
-                          {item.title}
-                        </div>
-
-                        <div style={miniMetaStyle}>
-                          <span>{formatNewsDate(item.createdAt)}</span>
-                          <span>•</span>
-                          <span>{getReadingTime(item)}</span>
-                        </div>
-                      </div>
-                    </Link>
-
-                    {canManageNews && (
-                      <div style={miniActionRowStyle} className="news-card-actions">
-                        <button
-                          onClick={() => handleEdit(item)}
-                          style={miniEditButtonStyle}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          style={miniDeleteButtonStyle}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
               </div>
             )}
           </div>
