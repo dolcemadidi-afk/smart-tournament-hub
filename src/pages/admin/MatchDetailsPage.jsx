@@ -12,6 +12,7 @@ import {
   Goal,
   Square,
   Save,
+  Trophy,
 } from "lucide-react";
 
 function MatchDetailsPage() {
@@ -36,6 +37,9 @@ function MatchDetailsPage() {
   const [cardSaving, setCardSaving] = useState(false);
 
   const [penaltySaving, setPenaltySaving] = useState(false);
+
+  const [motmPlayerId, setMotmPlayerId] = useState("");
+  const [motmSaving, setMotmSaving] = useState(false);
 
   const [previousMatchSuspendedIds, setPreviousMatchSuspendedIds] = useState(
     []
@@ -79,6 +83,7 @@ function MatchDetailsPage() {
     }
 
     setMatch(data);
+    setMotmPlayerId(data.man_of_the_match_player_id || "");
   };
 
   const fetchTeams = async () => {
@@ -336,6 +341,11 @@ function MatchDetailsPage() {
     return team?.logo_url || "";
   };
 
+  const getPlayerName = (playerId) => {
+    const player = players.find((p) => p.id === playerId);
+    return player?.full_name || "Not selected";
+  };
+
   const formatMMSS = (seconds) => {
     const safe = Math.max(0, Math.floor(seconds || 0));
     const minutes = Math.floor(safe / 60);
@@ -495,6 +505,35 @@ function MatchDetailsPage() {
     await fetchMatch();
     setPenaltySaving(false);
     alert("Penalties saved successfully.");
+  };
+
+  const handleSaveMOTM = async () => {
+    if (!isOrganizer) return;
+
+    if (!motmPlayerId) {
+      alert("Select a player");
+      return;
+    }
+
+    setMotmSaving(true);
+
+    const { error } = await supabase
+      .from("matches")
+      .update({
+        man_of_the_match_player_id: motmPlayerId,
+      })
+      .eq("id", match.id);
+
+    if (error) {
+      console.error("Error saving MOTM:", error.message);
+      alert("Error saving");
+      setMotmSaving(false);
+      return;
+    }
+
+    await fetchMatch();
+    setMotmSaving(false);
+    alert("Man of the Match saved");
   };
 
   const handleStartMatch = async () => {
@@ -1150,6 +1189,10 @@ function MatchDetailsPage() {
     (team) => team.id === match.team_a_id || team.id === match.team_b_id
   );
 
+  const matchPlayers = players.filter(
+    (p) => p.team_id === match.team_a_id || p.team_id === match.team_b_id
+  );
+
   const goalPlayers = players.filter(
     (player) =>
       player.team_id === goalTeamId && !suspendedPlayerIds.includes(player.id)
@@ -1509,10 +1552,14 @@ function MatchDetailsPage() {
               <div style={scoreCenterStyle} className="match-center-score">
                 <div style={scoreBigStyle} className="match-big-score">
                   {regularTeamAScore}
-                  {showPenalties && penaltyTeamAScore !== "" && ` (${penaltyTeamAScore})`}
+                  {showPenalties &&
+                    penaltyTeamAScore !== "" &&
+                    ` (${penaltyTeamAScore})`}
                   {" - "}
                   {regularTeamBScore}
-                  {showPenalties && penaltyTeamBScore !== "" && ` (${penaltyTeamBScore})`}
+                  {showPenalties &&
+                    penaltyTeamBScore !== "" &&
+                    ` (${penaltyTeamBScore})`}
                 </div>
 
                 <div
@@ -1579,6 +1626,45 @@ function MatchDetailsPage() {
                 {match.winner_team_id && (
                   <div style={winnerTextStyle}>Winner: {winnerName}</div>
                 )}
+
+                <div style={motmWrapStyle}>
+                  <div style={motmTitleStyle}>
+                    <Trophy size={16} />
+                    Man of the Match
+                  </div>
+
+                  {isOrganizer ? (
+                    <div style={motmEditorStyle}>
+                      <select
+                        value={motmPlayerId}
+                        onChange={(e) => setMotmPlayerId(e.target.value)}
+                        style={{ ...inputStyle, maxWidth: "280px" }}
+                      >
+                        <option value="">Select player</option>
+                        {matchPlayers.map((player) => (
+                          <option key={player.id} value={player.id}>
+                            {player.full_name}
+                            {player.jersey_number
+                              ? ` #${player.jersey_number}`
+                              : ""}
+                          </option>
+                        ))}
+                      </select>
+
+                      <button
+                        onClick={handleSaveMOTM}
+                        disabled={motmSaving}
+                        style={motmButtonStyle}
+                      >
+                        {motmSaving ? "Saving..." : "Save"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={motmNameStyle}>
+                      {getPlayerName(match.man_of_the_match_player_id)}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div style={teamColumnStyle} className="match-team-column">
@@ -1887,6 +1973,42 @@ const winnerTextStyle = {
   fontWeight: "800",
   color: "#16a34a",
   textAlign: "center",
+};
+
+const motmWrapStyle = {
+  marginTop: "16px",
+  textAlign: "center",
+};
+
+const motmTitleStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "8px",
+  fontWeight: "800",
+  marginBottom: "8px",
+  color: "#111827",
+};
+
+const motmEditorStyle = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: "8px",
+};
+
+const motmButtonStyle = {
+  background: "#f59e0b",
+  color: "#fff",
+  border: "none",
+  padding: "10px 14px",
+  borderRadius: "10px",
+  cursor: "pointer",
+  fontWeight: "700",
+};
+
+const motmNameStyle = {
+  fontWeight: "700",
+  color: "#111827",
 };
 
 const actionsRowStyle = {
