@@ -1353,7 +1353,7 @@ function Tournaments() {
 
           @media (max-width: 768px) {
             .tour-page {
-              padding: 14px !important;
+              padding: 12px !important;
             }
 
             .tour-container {
@@ -1368,11 +1368,12 @@ function Tournaments() {
             .tour-hero-row {
               flex-direction: column !important;
               align-items: flex-start !important;
+              gap: 14px !important;
             }
 
             .tour-card,
             .tour-list-card {
-              padding: 16px !important;
+              padding: 14px !important;
               border-radius: 16px !important;
             }
 
@@ -1391,6 +1392,36 @@ function Tournaments() {
 
             .tour-actions button {
               width: 100% !important;
+            }
+
+            .tour-slot-grid {
+              grid-template-columns: 1fr !important;
+            }
+
+            .tour-slot-card {
+              padding: 12px !important;
+              gap: 8px !important;
+            }
+
+            .tour-input,
+            .tour-date-input,
+            .tour-select {
+              padding: 11px 12px !important;
+              font-size: 14px !important;
+              min-height: 44px !important;
+            }
+
+            .tour-date-helper {
+              font-size: 11px !important;
+            }
+
+            .tour-name {
+              font-size: 18px !important;
+            }
+
+            .tour-meta {
+              font-size: 13px !important;
+              line-height: 1.5 !important;
             }
           }
         `}
@@ -1440,6 +1471,7 @@ function Tournaments() {
                   onChange={(e) => setName(e.target.value)}
                   required
                   style={inputStyle}
+                  className="tour-input"
                 />
               </Field>
 
@@ -1450,6 +1482,7 @@ function Tournaments() {
                   value={type}
                   onChange={(e) => setType(e.target.value)}
                   style={inputStyle}
+                  className="tour-input"
                 />
               </Field>
 
@@ -1460,6 +1493,7 @@ function Tournaments() {
                   value={format}
                   onChange={(e) => setFormat(e.target.value)}
                   style={inputStyle}
+                  className="tour-input"
                 />
               </Field>
 
@@ -1470,26 +1504,25 @@ function Tournaments() {
                   value={venue}
                   onChange={(e) => setVenue(e.target.value)}
                   style={inputStyle}
+                  className="tour-input"
                 />
               </Field>
 
               <Field label="Start date">
-                <input
-                  type="date"
+                <DateInput
                   value={startDate}
                   min={today}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  style={inputStyle}
+                  onChange={setStartDate}
+                  helper="Choose tournament start date"
                 />
               </Field>
 
               <Field label="End date">
-                <input
-                  type="date"
+                <DateInput
                   value={endDate}
                   min={startDate || today}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  style={inputStyle}
+                  onChange={setEndDate}
+                  helper="Choose tournament end date"
                 />
               </Field>
 
@@ -1498,6 +1531,7 @@ function Tournaments() {
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
                   style={inputStyle}
+                  className="tour-select"
                 >
                   <option value="upcoming">Upcoming</option>
                   <option value="ongoing">Ongoing</option>
@@ -1511,6 +1545,7 @@ function Tournaments() {
                   accept="image/*"
                   onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
                   style={inputStyle}
+                  className="tour-input"
                 />
               </Field>
 
@@ -1522,6 +1557,7 @@ function Tournaments() {
                   value={minPlayers}
                   onChange={(e) => setMinPlayers(e.target.value)}
                   style={inputStyle}
+                  className="tour-input"
                 />
               </Field>
 
@@ -1533,6 +1569,7 @@ function Tournaments() {
                   value={maxPlayers}
                   onChange={(e) => setMaxPlayers(e.target.value)}
                   style={inputStyle}
+                  className="tour-input"
                 />
               </Field>
 
@@ -1544,6 +1581,7 @@ function Tournaments() {
                   value={maxTeams}
                   onChange={(e) => setMaxTeams(e.target.value)}
                   style={inputStyle}
+                  className="tour-input"
                 />
               </Field>
 
@@ -1592,6 +1630,7 @@ function Tournaments() {
                     }))
                   }
                   style={inputStyle}
+                  className="tour-input"
                 />
               </Field>
 
@@ -1607,6 +1646,7 @@ function Tournaments() {
                     }))
                   }
                   style={inputStyle}
+                  className="tour-input"
                 />
               </Field>
 
@@ -1622,6 +1662,7 @@ function Tournaments() {
                     }))
                   }
                   style={inputStyle}
+                  className="tour-input"
                 />
               </Field>
             </div>
@@ -1643,7 +1684,7 @@ function Tournaments() {
               min={today}
               onChange={setRound1Date}
             />
-            <div style={slotsGridStyle}>
+            <div style={slotsGridStyle} className="tour-slot-grid">
               {round1Slots.map((slot, index) => (
                 <SlotCard
                   key={`r1-${index}`}
@@ -1665,7 +1706,7 @@ function Tournaments() {
               min={today}
               onChange={setRound2Date}
             />
-            <div style={slotsGridStyle}>
+            <div style={slotsGridStyle} className="tour-slot-grid">
               {round2Slots.map((slot, index) => (
                 <SlotCard
                   key={`r2-${index}`}
@@ -1687,7 +1728,7 @@ function Tournaments() {
               min={today}
               onChange={setRound3Date}
             />
-            <div style={slotsGridStyle}>
+            <div style={slotsGridStyle} className="tour-slot-grid">
               {round3Slots.map((slot, index) => (
                 <SlotCard
                   key={`r3-${index}`}
@@ -1720,7 +1761,7 @@ function Tournaments() {
               min={today}
               onChange={setQuarterfinalDate}
             />
-            <div style={slotsGridStyle}>
+            <div style={slotsGridStyle} className="tour-slot-grid">
               {quarterfinalSlots.map((slot, index) => (
                 <SlotCard
                   key={`qf-${index}`}
@@ -1761,22 +1802,20 @@ function Tournaments() {
             <div style={{ marginTop: "18px" }}>
               <div style={twoSlotsGridStyle} className="tour-two-grid">
                 <Field label="Final Date">
-                  <input
-                    type="date"
+                  <DateInput
                     value={finalDate}
                     min={today}
-                    onChange={(e) => setFinalDate(e.target.value)}
-                    style={inputStyle}
+                    onChange={setFinalDate}
+                    helper="Choose final match date"
                   />
                 </Field>
 
                 <Field label="3rd Place Date">
-                  <input
-                    type="date"
+                  <DateInput
                     value={thirdPlaceDate}
                     min={today}
-                    onChange={(e) => setThirdPlaceDate(e.target.value)}
-                    style={inputStyle}
+                    onChange={setThirdPlaceDate}
+                    helper="Choose 3rd place match date"
                   />
                 </Field>
               </div>
@@ -1843,8 +1882,10 @@ function Tournaments() {
                         </div>
 
                         <div style={{ minWidth: 0 }}>
-                          <h3 style={tournamentNameStyle}>{t.name}</h3>
-                          <div style={tournamentMetaStyle}>
+                          <h3 style={tournamentNameStyle} className="tour-name">
+                            {t.name}
+                          </h3>
+                          <div style={tournamentMetaStyle} className="tour-meta">
                             {t.type || "-"} • {t.format || "-"} • {t.venue || "-"}
                           </div>
                           <div style={tournamentDateStyle}>
@@ -1874,6 +1915,7 @@ function Tournaments() {
                           ...statusSelectStyle,
                           ...getStatusStyle(t.status),
                         }}
+                        className="tour-select"
                       >
                         <option value="upcoming">Upcoming</option>
                         <option value="ongoing">Ongoing</option>
@@ -1980,16 +2022,33 @@ function Field({ label, children }) {
   );
 }
 
-function StageDateBlock({ title, value, min, onChange }) {
+function DateInput({ value, min, onChange, helper }) {
   return (
-    <div style={{ marginBottom: "18px", marginTop: "6px" }}>
-      <label style={labelStyle}>{title}</label>
+    <div>
       <input
         type="date"
-        value={value}
+        value={value || ""}
         min={min}
         onChange={(e) => onChange(e.target.value)}
         style={inputStyle}
+        className="tour-date-input"
+      />
+      <div style={dateHelperStyle} className="tour-date-helper">
+        {helper}
+      </div>
+    </div>
+  );
+}
+
+function StageDateBlock({ title, value, min, onChange }) {
+  return (
+    <div style={{ marginBottom: "16px", marginTop: "6px" }}>
+      <label style={labelStyle}>{title}</label>
+      <DateInput
+        value={value}
+        min={min}
+        onChange={onChange}
+        helper={`Select ${title.toLowerCase()}`}
       />
     </div>
   );
@@ -1997,13 +2056,14 @@ function StageDateBlock({ title, value, min, onChange }) {
 
 function SlotCard({ title, slot, onTimeChange, onFieldChange }) {
   return (
-    <div style={slotCardStyle}>
+    <div style={slotCardStyle} className="tour-slot-card">
       <div style={slotTitleStyle}>{title}</div>
       <input
         type="time"
-        value={slot.time}
+        value={slot.time || ""}
         onChange={(e) => onTimeChange(e.target.value)}
         style={inputStyle}
+        className="tour-input"
       />
       <input
         type="text"
@@ -2011,6 +2071,7 @@ function SlotCard({ title, slot, onTimeChange, onFieldChange }) {
         value={slot.field}
         onChange={(e) => onFieldChange(e.target.value)}
         style={inputStyle}
+        className="tour-input"
       />
     </div>
   );
@@ -2210,7 +2271,7 @@ const twoSlotsGridStyle = {
 const slotsGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: "14px",
+  gap: "12px",
   marginBottom: "8px",
 };
 
@@ -2230,6 +2291,13 @@ const inputStyle = {
   outline: "none",
   boxSizing: "border-box",
   background: "#fff",
+};
+
+const dateHelperStyle = {
+  marginTop: "6px",
+  fontSize: "12px",
+  color: "#94a3b8",
+  fontWeight: "600",
 };
 
 const mainActionsRowStyle = {
