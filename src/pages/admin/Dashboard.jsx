@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../../services/supabase";
-import { getNewsFromStorage } from "../../utils/newsStorage";
 import Skeleton from "../../components/Skeleton";
 import {
   Trophy,
@@ -48,9 +47,14 @@ function Dashboard() {
           .in("status", ["finished", "live", "break"])
           .order("match_date", { ascending: false })
           .order("match_time", { ascending: false }),
+
+        supabase
+          .from("news")
+          .select("*")
+          .order("created_at", { ascending: false }),
       ]);
 
-      const [tournamentsRes, teamsRes, playersRes, matchesRes] = results;
+      const [tournamentsRes, teamsRes, playersRes, matchesRes, newsRes] = results;
 
       if (tournamentsRes.status === "fulfilled" && !tournamentsRes.value.error) {
         setTournaments(tournamentsRes.value.data || []);
@@ -76,7 +80,11 @@ function Dashboard() {
         console.error("Matches fetch error:", matchesRes);
       }
 
-      setNewsItems(getNewsFromStorage());
+      if (newsRes.status === "fulfilled" && !newsRes.value.error) {
+        setNewsItems(newsRes.value.data || []);
+      } else {
+        console.error("News fetch error:", newsRes);
+      }
 
       setTimeout(() => {
         setLoading(false);
@@ -483,9 +491,9 @@ function Dashboard() {
                   >
                     <div style={newsCardStyle}>
                       <div style={newsImageWrapStyle}>
-                        {item.coverImage ? (
+                        {item.cover_image ? (
                           <img
-                            src={item.coverImage}
+                            src={item.cover_image}
                             alt={item.title}
                             style={newsImageStyle}
                           />
