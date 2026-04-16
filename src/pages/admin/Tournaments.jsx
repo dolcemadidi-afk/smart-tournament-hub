@@ -37,50 +37,22 @@ function Tournaments() {
   const [finalDate, setFinalDate] = useState("");
   const [thirdPlaceDate, setThirdPlaceDate] = useState("");
 
-  const [round1Slots, setRound1Slots] = useState([
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-  ]);
+  const [round1Slots, setRound1Slots] = useState(
+    Array.from({ length: 8 }, () => ({ time: "", field: "" }))
+  );
+  const [round2Slots, setRound2Slots] = useState(
+    Array.from({ length: 8 }, () => ({ time: "", field: "" }))
+  );
+  const [round3Slots, setRound3Slots] = useState(
+    Array.from({ length: 8 }, () => ({ time: "", field: "" }))
+  );
 
-  const [round2Slots, setRound2Slots] = useState([
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-  ]);
-
-  const [round3Slots, setRound3Slots] = useState([
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-  ]);
-
-  const [quarterfinalSlots, setQuarterfinalSlots] = useState([
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-    { time: "", field: "" },
-  ]);
-
-  const [semifinalSlots, setSemifinalSlots] = useState([
-    { time: "", field: "" },
-    { time: "", field: "" },
-  ]);
+  const [quarterfinalSlots, setQuarterfinalSlots] = useState(
+    Array.from({ length: 4 }, () => ({ time: "", field: "" }))
+  );
+  const [semifinalSlots, setSemifinalSlots] = useState(
+    Array.from({ length: 2 }, () => ({ time: "", field: "" }))
+  );
 
   const [finalSlot, setFinalSlot] = useState({ time: "", field: "" });
   const [thirdPlaceSlot, setThirdPlaceSlot] = useState({
@@ -171,50 +143,15 @@ function Tournaments() {
     setFinalDate("");
     setThirdPlaceDate("");
 
-    setRound1Slots([
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-    ]);
-
-    setRound2Slots([
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-    ]);
-
-    setRound3Slots([
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-    ]);
-
-    setQuarterfinalSlots([
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-      { time: "", field: "" },
-    ]);
-
-    setSemifinalSlots([
-      { time: "", field: "" },
-      { time: "", field: "" },
-    ]);
+    setRound1Slots(Array.from({ length: 8 }, () => ({ time: "", field: "" })));
+    setRound2Slots(Array.from({ length: 8 }, () => ({ time: "", field: "" })));
+    setRound3Slots(Array.from({ length: 8 }, () => ({ time: "", field: "" })));
+    setQuarterfinalSlots(
+      Array.from({ length: 4 }, () => ({ time: "", field: "" }))
+    );
+    setSemifinalSlots(
+      Array.from({ length: 2 }, () => ({ time: "", field: "" }))
+    );
 
     setFinalSlot({ time: "", field: "" });
     setThirdPlaceSlot({ time: "", field: "" });
@@ -297,11 +234,7 @@ function Tournaments() {
       return;
     }
 
-    if (
-      minPlayers &&
-      maxPlayers &&
-      Number(minPlayers) > Number(maxPlayers)
-    ) {
+    if (minPlayers && maxPlayers && Number(minPlayers) > Number(maxPlayers)) {
       alert("Minimum players cannot be greater than maximum players.");
       setLoading(false);
       return;
@@ -1333,6 +1266,42 @@ function Tournaments() {
     <>
       <style>
         {`
+          .tour-input,
+          .tour-date-input,
+          .tour-time-input,
+          .tour-select {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+            color: #111827;
+            background: #ffffff;
+            appearance: none;
+            -webkit-appearance: none;
+          }
+
+          .tour-date-input,
+          .tour-time-input {
+            min-height: 48px;
+            line-height: 1.2;
+          }
+
+          .tour-date-input::placeholder,
+          .tour-time-input::placeholder,
+          .tour-input::placeholder {
+            color: #9ca3af;
+          }
+
+          .tour-date-input::-webkit-calendar-picker-indicator,
+          .tour-time-input::-webkit-calendar-picker-indicator {
+            opacity: 1;
+            cursor: pointer;
+          }
+
+          .tour-slot-card {
+            overflow: hidden;
+          }
+
           @media (max-width: 1024px) {
             .tour-form-grid,
             .tour-config-grid,
@@ -1401,10 +1370,12 @@ function Tournaments() {
             .tour-slot-card {
               padding: 12px !important;
               gap: 8px !important;
+              border-radius: 14px !important;
             }
 
             .tour-input,
             .tour-date-input,
+            .tour-time-input,
             .tour-select {
               padding: 11px 12px !important;
               font-size: 14px !important;
@@ -1513,7 +1484,7 @@ function Tournaments() {
                   value={startDate}
                   min={today}
                   onChange={setStartDate}
-                  helper="Choose tournament start date"
+                  helper="Tap to select start date"
                 />
               </Field>
 
@@ -1522,7 +1493,7 @@ function Tournaments() {
                   value={endDate}
                   min={startDate || today}
                   onChange={setEndDate}
-                  helper="Choose tournament end date"
+                  helper="Tap to select end date"
                 />
               </Field>
 
@@ -1806,7 +1777,7 @@ function Tournaments() {
                     value={finalDate}
                     min={today}
                     onChange={setFinalDate}
-                    helper="Choose final match date"
+                    helper="Tap to select final date"
                   />
                 </Field>
 
@@ -1815,7 +1786,7 @@ function Tournaments() {
                     value={thirdPlaceDate}
                     min={today}
                     onChange={setThirdPlaceDate}
-                    helper="Choose 3rd place match date"
+                    helper="Tap to select 3rd place date"
                   />
                 </Field>
               </div>
@@ -2026,15 +1997,46 @@ function DateInput({ value, min, onChange, helper }) {
   return (
     <div>
       <input
-        type="date"
+        type="text"
+        placeholder="jj/mm/aaaa"
         value={value || ""}
-        min={min}
+        onFocus={(e) => {
+          e.target.type = "date";
+          if (min) e.target.min = min;
+        }}
+        onBlur={(e) => {
+          if (!e.target.value) e.target.type = "text";
+        }}
         onChange={(e) => onChange(e.target.value)}
         style={inputStyle}
         className="tour-date-input"
       />
       <div style={dateHelperStyle} className="tour-date-helper">
         {helper}
+      </div>
+    </div>
+  );
+}
+
+function TimeInput({ value, onChange }) {
+  return (
+    <div>
+      <input
+        type="text"
+        placeholder="--:--"
+        value={value || ""}
+        onFocus={(e) => {
+          e.target.type = "time";
+        }}
+        onBlur={(e) => {
+          if (!e.target.value) e.target.type = "text";
+        }}
+        onChange={(e) => onChange(e.target.value)}
+        style={inputStyle}
+        className="tour-time-input"
+      />
+      <div style={dateHelperStyle} className="tour-date-helper">
+        Tap to select time
       </div>
     </div>
   );
@@ -2048,7 +2050,7 @@ function StageDateBlock({ title, value, min, onChange }) {
         value={value}
         min={min}
         onChange={onChange}
-        helper={`Select ${title.toLowerCase()}`}
+        helper={`Tap to select ${title.toLowerCase()}`}
       />
     </div>
   );
@@ -2058,13 +2060,9 @@ function SlotCard({ title, slot, onTimeChange, onFieldChange }) {
   return (
     <div style={slotCardStyle} className="tour-slot-card">
       <div style={slotTitleStyle}>{title}</div>
-      <input
-        type="time"
-        value={slot.time || ""}
-        onChange={(e) => onTimeChange(e.target.value)}
-        style={inputStyle}
-        className="tour-input"
-      />
+
+      <TimeInput value={slot.time} onChange={onTimeChange} />
+
       <input
         type="text"
         placeholder="Field / Venue"
