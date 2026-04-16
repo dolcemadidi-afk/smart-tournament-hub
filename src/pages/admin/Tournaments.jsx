@@ -1267,8 +1267,6 @@ function Tournaments() {
       <style>
         {`
           .tour-input,
-          .tour-date-input,
-          .tour-time-input,
           .tour-select {
             width: 100%;
             max-width: 100%;
@@ -1276,18 +1274,21 @@ function Tournaments() {
             box-sizing: border-box;
             color: #111827;
             background: #ffffff;
-            appearance: none;
-            -webkit-appearance: none;
           }
 
           .tour-date-input,
           .tour-time-input {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+            color: #111827;
+            background: #ffffff;
             min-height: 48px;
             line-height: 1.2;
+            color-scheme: light;
           }
 
-          .tour-date-input::placeholder,
-          .tour-time-input::placeholder,
           .tour-input::placeholder {
             color: #9ca3af;
           }
@@ -1997,17 +1998,11 @@ function DateInput({ value, min, onChange, helper }) {
   return (
     <div>
       <input
-        type="text"
-        placeholder="jj/mm/aaaa"
+        type="date"
         value={value || ""}
-        onFocus={(e) => {
-          e.target.type = "date";
-          if (min) e.target.min = min;
-        }}
-        onBlur={(e) => {
-          if (!e.target.value) e.target.type = "text";
-        }}
+        min={min}
         onChange={(e) => onChange(e.target.value)}
+        onClick={(e) => e.target.showPicker?.()}
         style={inputStyle}
         className="tour-date-input"
       />
@@ -2022,16 +2017,10 @@ function TimeInput({ value, onChange }) {
   return (
     <div>
       <input
-        type="text"
-        placeholder="--:--"
+        type="time"
         value={value || ""}
-        onFocus={(e) => {
-          e.target.type = "time";
-        }}
-        onBlur={(e) => {
-          if (!e.target.value) e.target.type = "text";
-        }}
         onChange={(e) => onChange(e.target.value)}
+        onClick={(e) => e.target.showPicker?.()}
         style={inputStyle}
         className="tour-time-input"
       />
