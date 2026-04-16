@@ -327,7 +327,8 @@ function MatchDetailsPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const isOrganizer = userRole === "organizer";
+  const canManageMatch =
+    userRole === "organizer" || userRole === "staff";
 
   const getTeamName = (teamId) => {
     const team = teams.find((t) => t.id === teamId);
@@ -508,7 +509,7 @@ function MatchDetailsPage() {
   };
 
   const handleSaveMOTM = async () => {
-    if (!isOrganizer) return;
+    if (!canManageMatch) return;
 
     if (!motmPlayerId) {
       alert("Select a player");
@@ -537,7 +538,7 @@ function MatchDetailsPage() {
   };
 
   const handleStartMatch = async () => {
-    if (!isOrganizer) return;
+    if (!canManageMatch) return;
 
     const confirmStart = window.confirm("Start this match now?");
     if (!confirmStart) return;
@@ -574,7 +575,7 @@ function MatchDetailsPage() {
   };
 
   const handleBreakMatch = async () => {
-    if (!isOrganizer) return;
+    if (!canManageMatch) return;
 
     if (!match || match.status !== "live" || (match.current_half || 1) !== 1) {
       alert("Break is only available in the 1st half");
@@ -612,7 +613,7 @@ function MatchDetailsPage() {
   };
 
   const handleResumeMatch = async () => {
-    if (!isOrganizer) return;
+    if (!canManageMatch) return;
 
     const confirmResume = window.confirm("Resume this match now?");
     if (!confirmResume) return;
@@ -648,7 +649,7 @@ function MatchDetailsPage() {
   };
 
   const handleFinishMatch = async () => {
-    if (!isOrganizer) return;
+    if (!canManageMatch) return;
 
     const confirmFinish = window.confirm("Finish 2nd half?");
     if (!confirmFinish) return;
@@ -712,7 +713,7 @@ function MatchDetailsPage() {
   useEffect(() => {
     if (!match) return;
     if (autoActionRef.current) return;
-    if (!isOrganizer) return;
+    if (!canManageMatch) return;
 
     const firstHalfSeconds = (match.first_half_minutes || 24) * 60;
     const secondHalfSeconds = (match.second_half_minutes || 24) * 60;
@@ -864,7 +865,7 @@ function MatchDetailsPage() {
     };
 
     runAutoFlow();
-  }, [match, tick, isKnockout, isOrganizer]);
+  }, [match, tick, isKnockout, canManageMatch]);
 
   const currentMatchSuspendedIds = useMemo(() => {
     const yellowCountMap = {};
@@ -896,7 +897,7 @@ function MatchDetailsPage() {
   }, [currentMatchSuspendedIds, previousMatchSuspendedIds]);
 
   const handleAddGoal = async () => {
-    if (!isOrganizer) return;
+    if (!canManageMatch) return;
 
     if (match.status !== "live") {
       alert("You can only add goals to live matches");
@@ -966,7 +967,7 @@ function MatchDetailsPage() {
   };
 
   const handleAddCard = async () => {
-    if (!isOrganizer) return;
+    if (!canManageMatch) return;
 
     if (match.status !== "live") {
       alert("You can only add cards to live matches");
@@ -1013,7 +1014,7 @@ function MatchDetailsPage() {
   };
 
   const handleDeleteGoal = async (goal) => {
-    if (!isOrganizer) return;
+    if (!canManageMatch) return;
 
     const confirmDelete = window.confirm(
       "Are you sure you want to delete this goal?"
@@ -1058,7 +1059,7 @@ function MatchDetailsPage() {
   };
 
   const handleDeleteCard = async (card) => {
-    if (!isOrganizer) return;
+    if (!canManageMatch) return;
 
     const confirmDelete = window.confirm(
       "Are you sure you want to delete this card?"
@@ -1321,7 +1322,7 @@ function MatchDetailsPage() {
                       : "Red Card"}
                   </div>
                 </div>
-                {isOrganizer && (
+                {canManageMatch && (
                   <button
                     onClick={() =>
                       isGoal ? handleDeleteGoal(event) : handleDeleteCard(event)
@@ -1338,7 +1339,7 @@ function MatchDetailsPage() {
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             {!isTeamA && (
               <div style={eventCardRightStyle} className="match-event-card-right">
-                {isOrganizer && (
+                {canManageMatch && (
                   <button
                     onClick={() =>
                       isGoal ? handleDeleteGoal(event) : handleDeleteCard(event)
@@ -1579,7 +1580,7 @@ function MatchDetailsPage() {
                   {match.break_minutes || 5}m
                 </div>
 
-                {showPenalties && isOrganizer && (
+                {showPenalties && canManageMatch && (
                   <div
                     style={penaltiesRowStyle}
                     className="match-penalties-row"
@@ -1633,7 +1634,7 @@ function MatchDetailsPage() {
                     Man of the Match
                   </div>
 
-                  {isOrganizer ? (
+                  {canManageMatch ? (
                     <div style={motmEditorStyle}>
                       <select
                         value={motmPlayerId}
@@ -1675,7 +1676,7 @@ function MatchDetailsPage() {
               </div>
             </div>
 
-            {isOrganizer && (
+            {canManageMatch && (
               <div style={actionsRowStyle} className="match-actions">
                 {match.status === "scheduled" && (
                   <button onClick={handleStartMatch} style={startButtonStyle}>
@@ -1708,7 +1709,7 @@ function MatchDetailsPage() {
             )}
           </div>
 
-          {isOrganizer && (
+          {canManageMatch && (
             <div style={mainGridStyle} className="match-main-grid">
               <div style={panelCardStyle}>
                 <div style={panelHeaderStyle}>
