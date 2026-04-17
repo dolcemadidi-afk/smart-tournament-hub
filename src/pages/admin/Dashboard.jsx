@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../../services/supabase";
 import Skeleton from "../../components/Skeleton";
-import { useTranslation } from "react-i18next";
 import {
   Trophy,
   Users,
@@ -15,7 +14,6 @@ import {
 } from "lucide-react";
 
 function Dashboard() {
-  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [tournaments, setTournaments] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -33,10 +31,7 @@ function Dashboard() {
           .select("*")
           .order("created_at", { ascending: false }),
 
-        supabase
-          .from("teams")
-          .select("*")
-          .order("created_at", { ascending: false }),
+        supabase.from("teams").select("*").order("created_at", { ascending: false }),
 
         supabase
           .from("players")
@@ -50,10 +45,7 @@ function Dashboard() {
           .order("match_date", { ascending: false })
           .order("match_time", { ascending: false }),
 
-        supabase
-          .from("news")
-          .select("*")
-          .order("created_at", { ascending: false }),
+        supabase.from("news").select("*").order("created_at", { ascending: false }),
       ]);
 
       const [tournamentsRes, teamsRes, playersRes, matchesRes, newsRes] = results;
@@ -98,14 +90,12 @@ function Dashboard() {
 
   const getTournamentName = (id) => {
     const tournament = tournaments.find((t) => t.id === id);
-    return tournament ? tournament.name : t("unknownTournament");
+    return tournament ? tournament.name : "Unknown Tournament";
   };
 
   const getTeamName = (id) => {
     const team = teams.find((t) => t.id === id);
-    return team
-      ? team.team_name || team.company_name || t("unknownTeam")
-      : t("unknownTeam");
+    return team ? team.team_name || team.company_name || "Unknown Team" : "Unknown Team";
   };
 
   const getTeamLogo = (id) => {
@@ -163,14 +153,6 @@ function Dashboard() {
     if (status === "break") return "rgba(245,158,11,0.12)";
     if (status === "finished") return "rgba(107,114,128,0.10)";
     return "rgba(20,118,182,0.10)";
-  };
-
-  const getTranslatedStatus = (status) => {
-    if (status === "live") return t("statusLive");
-    if (status === "break") return t("statusBreak");
-    if (status === "finished") return t("statusFinished");
-    if (status === "scheduled") return t("statusScheduled");
-    return status;
   };
 
   if (loading) {
@@ -356,15 +338,18 @@ function Dashboard() {
             <div style={heroOverlayStyle} />
             <div style={heroRowStyle} className="dashboard-hero-row">
               <div>
-                <div style={heroEyebrowStyle}>{t("brandName")}</div>
-                <h1 style={heroTitleStyle}>{t("tournamentDashboard")}</h1>
-                <p style={heroTextStyle}>{t("dashboardHeroText")}</p>
+                <div style={heroEyebrowStyle}>Smart Sport Consulting</div>
+                <h1 style={heroTitleStyle}>Tournament Dashboard</h1>
+                <p style={heroTextStyle}>
+                  Manage tournaments, teams, players, matches, and news from one
+                  central place with a cleaner and more modern experience.
+                </p>
               </div>
 
               <div style={heroBadgeWrapStyle}>
                 <div style={heroBadgeStyle}>
                   <Activity size={16} />
-                  {t("liveOperations")}
+                  Live Operations
                 </div>
               </div>
             </div>
@@ -372,28 +357,28 @@ function Dashboard() {
 
           <div style={statsGridStyle} className="dashboard-stats-grid">
             <StatCard
-              title={t("tournaments")}
+              title="Tournaments"
               value={tournaments.length}
               icon={<Trophy size={20} />}
               accent="#1476b6"
               soft="rgba(20,118,182,0.10)"
             />
             <StatCard
-              title={t("teams")}
+              title="Teams"
               value={teams.length}
               icon={<Users size={20} />}
               accent="#109847"
               soft="rgba(16,152,71,0.10)"
             />
             <StatCard
-              title={t("players")}
+              title="Players"
               value={players.length}
               icon={<UserSquare2 size={20} />}
               accent="#cf2136"
               soft="rgba(207,33,54,0.10)"
             />
             <StatCard
-              title={t("matches")}
+              title="Matches"
               value={matches.length}
               icon={<CalendarDays size={20} />}
               accent="#1476b6"
@@ -417,16 +402,16 @@ function Dashboard() {
                   <Building2 size={18} />
                 </div>
                 <div>
-                  <div style={sectionTitleStyle}>{t("companiesParticipating")}</div>
+                  <div style={sectionTitleStyle}>Companies Participating</div>
                   <div style={sectionSubtitleStyle}>
-                    {t("companiesParticipatingSubtitle")}
+                    Partner companies currently represented in the tournament
                   </div>
                 </div>
               </div>
             </div>
 
             {companyLogos.length === 0 ? (
-              <p style={emptyTextStyle}>{t("noCompanyLogosYet")}</p>
+              <p style={emptyTextStyle}>No company logos yet.</p>
             ) : (
               <div style={{ overflow: "hidden", width: "100%" }}>
                 <div style={companyTrackStyle}>
@@ -476,20 +461,20 @@ function Dashboard() {
                   <Newspaper size={18} />
                 </div>
                 <div>
-                  <div style={sectionTitleStyle}>{t("sportNews")}</div>
+                  <div style={sectionTitleStyle}>Smart Consulting Sport News</div>
                   <div style={sectionSubtitleStyle}>
-                    {t("sportNewsSubtitle")}
+                    Latest content and highlights from your platform
                   </div>
                 </div>
               </div>
 
               <Link to="/news" style={viewAllBtnStyle}>
-                {t("goToNews")}
+                Go to News
               </Link>
             </div>
 
             {recentNews.length === 0 ? (
-              <p style={emptyTextStyle}>{t("noNewsYet")}</p>
+              <p style={emptyTextStyle}>No news yet.</p>
             ) : (
               <div style={newsGridStyle} className="dashboard-news-grid">
                 {recentNews.map((item) => (
@@ -507,9 +492,7 @@ function Dashboard() {
                             style={newsImageStyle}
                           />
                         ) : (
-                          <div style={newsImageFallbackStyle}>
-                            {t("noImage")}
-                          </div>
+                          <div style={newsImageFallbackStyle}>No image</div>
                         )}
                       </div>
 
@@ -539,16 +522,16 @@ function Dashboard() {
                   <CalendarDays size={18} />
                 </div>
                 <div>
-                  <div style={sectionTitleStyle}>{t("recentMatches5")}</div>
+                  <div style={sectionTitleStyle}>5 Recent Matches</div>
                   <div style={sectionSubtitleStyle}>
-                    {t("recentMatchesSubtitle")}
+                    Latest finished, live, or break-time matches
                   </div>
                 </div>
               </div>
             </div>
 
             {recentMatches.length === 0 ? (
-              <p style={emptyTextStyle}>{t("noMatchesYet")}</p>
+              <p style={emptyTextStyle}>No matches yet.</p>
             ) : (
               <div style={{ display: "grid", gap: "14px" }}>
                 {recentMatches.map((match) => {
@@ -588,7 +571,7 @@ function Dashboard() {
                         >
                           <span>{getTournamentName(match.tournament_id)}</span>
                           <span>
-                            {match.field || t("noField")} • {match.match_date || "-"} •{" "}
+                            {match.field || "No field"} • {match.match_date || "-"} •{" "}
                             {match.match_time || "-"}
                           </span>
                         </div>
@@ -602,7 +585,7 @@ function Dashboard() {
                                 background: getMatchStatusBg(match.status),
                               }}
                             >
-                              {getTranslatedStatus(match.status)}
+                              {match.status}
                             </div>
 
                             <div style={teamsColumnStyle}>
@@ -646,7 +629,7 @@ function Dashboard() {
                             {winnerName && (
                               <div style={winnerBadgeStyle}>
                                 <Flag size={14} />
-                                {t("winnerLabel")} {winnerName}
+                                Winner: {winnerName}
                               </div>
                             )}
                           </div>
