@@ -463,7 +463,7 @@ function MatchDetailsPage() {
   };
 
   const handleSavePenalties = async () => {
-    if (!match || !isOrganizer) return;
+    if (!match || !canManageMatch) return;
 
     if (!showPenalties) {
       alert("Penalties not available.");
