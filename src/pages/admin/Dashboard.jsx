@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../../services/supabase";
 import Skeleton from "../../components/Skeleton";
+import { useTranslation } from "react-i18next";
 import {
   Trophy,
   Users,

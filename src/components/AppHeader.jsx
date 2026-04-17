@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../services/supabase";
+import { useTranslation } from "react-i18next";
 import {
   LayoutDashboard,
   Trophy,
@@ -17,6 +18,7 @@ import {
 function AppHeader() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { i18n, t } = useTranslation();
 
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
@@ -24,6 +26,11 @@ function AppHeader() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 900);
+
+  const changeLang = (lang) => {
+    i18n.changeLanguage(lang);
+    localStorage.setItem("lang", lang);
+  };
 
   useEffect(() => {
     const loadInitialUser = async () => {
@@ -109,13 +116,13 @@ function AppHeader() {
   };
 
   const allNavItems = [
-    { label: "Dashboard", path: "/", icon: LayoutDashboard },
-    { label: "Tournaments", path: "/tournaments", icon: Trophy },
-    { label: "Teams", path: "/teams", icon: Users },
-    { label: "Matches", path: "/matches", icon: CalendarDays },
-    { label: "Standings", path: "/standings", icon: BarChart3 },
-    { label: "Players", path: "/add-player", icon: UserSquare2 },
-    { label: "News", path: "/news", icon: Newspaper },
+    { label: t("dashboard"), path: "/", icon: LayoutDashboard },
+    { label: t("tournaments"), path: "/tournaments", icon: Trophy },
+    { label: t("teams"), path: "/teams", icon: Users },
+    { label: t("matches"), path: "/matches", icon: CalendarDays },
+    { label: t("standings"), path: "/standings", icon: BarChart3 },
+    { label: t("players"), path: "/add-player", icon: UserSquare2 },
+    { label: t("news"), path: "/news", icon: Newspaper },
   ];
 
   let navItems = allNavItems;
@@ -196,6 +203,16 @@ function AppHeader() {
               font-size: 12px !important;
               padding-right: 22px !important;
             }
+
+            .ssc-lang-switch {
+              gap: 6px !important;
+            }
+
+            .ssc-lang-button {
+              min-width: 42px !important;
+              height: 32px !important;
+              font-size: 12px !important;
+            }
           }
 
           @media (min-width: 901px) {
@@ -232,6 +249,30 @@ function AppHeader() {
             </div>
 
             <div style={rightStyle}>
+              <div style={langSwitchStyle} className="ssc-lang-switch">
+                <button
+                  onClick={() => changeLang("en")}
+                  style={{
+                    ...langButtonStyle,
+                    ...(i18n.language === "en" ? activeLangButtonStyle : {}),
+                  }}
+                  className="ssc-lang-button"
+                >
+                  EN
+                </button>
+
+                <button
+                  onClick={() => changeLang("fr")}
+                  style={{
+                    ...langButtonStyle,
+                    ...(i18n.language === "fr" ? activeLangButtonStyle : {}),
+                  }}
+                  className="ssc-lang-button"
+                >
+                  FR
+                </button>
+              </div>
+
               {user && (
                 <div
                   style={{ position: "relative" }}
@@ -260,7 +301,7 @@ function AppHeader() {
                       >
                         <span style={dropdownIconTextStyle}>
                           <User size={16} />
-                          Profile
+                          {t("profile")}
                         </span>
                       </button>
 
@@ -270,7 +311,7 @@ function AppHeader() {
                       >
                         <span style={dropdownIconTextStyle}>
                           <LogOut size={16} />
-                          Logout
+                          {t("logout")}
                         </span>
                       </button>
                     </div>
@@ -429,6 +470,31 @@ const rightStyle = {
   display: "flex",
   gap: "10px",
   alignItems: "center",
+};
+
+const langSwitchStyle = {
+  display: "flex",
+  gap: "8px",
+  alignItems: "center",
+};
+
+const langButtonStyle = {
+  background: "rgba(255,255,255,0.14)",
+  color: "#fff",
+  border: "1px solid rgba(255,255,255,0.28)",
+  borderRadius: "8px",
+  minWidth: "46px",
+  height: "34px",
+  cursor: "pointer",
+  fontWeight: "700",
+  fontSize: "13px",
+  transition: "0.2s ease",
+};
+
+const activeLangButtonStyle = {
+  background: "#ffffff",
+  color: "#1476b6",
+  border: "1px solid #ffffff",
 };
 
 const avatarBtn = {
