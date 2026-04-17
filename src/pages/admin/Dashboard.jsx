@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 function Dashboard() {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [tournaments, setTournaments] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -97,12 +98,14 @@ function Dashboard() {
 
   const getTournamentName = (id) => {
     const tournament = tournaments.find((t) => t.id === id);
-    return tournament ? tournament.name : "Unknown Tournament";
+    return tournament ? tournament.name : t("unknownTournament");
   };
 
   const getTeamName = (id) => {
     const team = teams.find((t) => t.id === id);
-    return team ? team.team_name || team.company_name || "Unknown Team" : "Unknown Team";
+    return team
+      ? team.team_name || team.company_name || t("unknownTeam")
+      : t("unknownTeam");
   };
 
   const getTeamLogo = (id) => {
@@ -160,6 +163,14 @@ function Dashboard() {
     if (status === "break") return "rgba(245,158,11,0.12)";
     if (status === "finished") return "rgba(107,114,128,0.10)";
     return "rgba(20,118,182,0.10)";
+  };
+
+  const getTranslatedStatus = (status) => {
+    if (status === "live") return t("statusLive");
+    if (status === "break") return t("statusBreak");
+    if (status === "finished") return t("statusFinished");
+    if (status === "scheduled") return t("statusScheduled");
+    return status;
   };
 
   if (loading) {
@@ -345,18 +356,15 @@ function Dashboard() {
             <div style={heroOverlayStyle} />
             <div style={heroRowStyle} className="dashboard-hero-row">
               <div>
-                <div style={heroEyebrowStyle}>Smart Sport Consulting</div>
-                <h1 style={heroTitleStyle}>Tournament Dashboard</h1>
-                <p style={heroTextStyle}>
-                  Manage tournaments, teams, players, matches, and news from one
-                  central place with a cleaner and more modern experience.
-                </p>
+                <div style={heroEyebrowStyle}>{t("brandName")}</div>
+                <h1 style={heroTitleStyle}>{t("tournamentDashboard")}</h1>
+                <p style={heroTextStyle}>{t("dashboardHeroText")}</p>
               </div>
 
               <div style={heroBadgeWrapStyle}>
                 <div style={heroBadgeStyle}>
                   <Activity size={16} />
-                  Live Operations
+                  {t("liveOperations")}
                 </div>
               </div>
             </div>
@@ -364,28 +372,28 @@ function Dashboard() {
 
           <div style={statsGridStyle} className="dashboard-stats-grid">
             <StatCard
-              title="Tournaments"
+              title={t("tournaments")}
               value={tournaments.length}
               icon={<Trophy size={20} />}
               accent="#1476b6"
               soft="rgba(20,118,182,0.10)"
             />
             <StatCard
-              title="Teams"
+              title={t("teams")}
               value={teams.length}
               icon={<Users size={20} />}
               accent="#109847"
               soft="rgba(16,152,71,0.10)"
             />
             <StatCard
-              title="Players"
+              title={t("players")}
               value={players.length}
               icon={<UserSquare2 size={20} />}
               accent="#cf2136"
               soft="rgba(207,33,54,0.10)"
             />
             <StatCard
-              title="Matches"
+              title={t("matches")}
               value={matches.length}
               icon={<CalendarDays size={20} />}
               accent="#1476b6"
@@ -409,16 +417,16 @@ function Dashboard() {
                   <Building2 size={18} />
                 </div>
                 <div>
-                  <div style={sectionTitleStyle}>Companies Participating</div>
+                  <div style={sectionTitleStyle}>{t("companiesParticipating")}</div>
                   <div style={sectionSubtitleStyle}>
-                    Partner companies currently represented in the tournament
+                    {t("companiesParticipatingSubtitle")}
                   </div>
                 </div>
               </div>
             </div>
 
             {companyLogos.length === 0 ? (
-              <p style={emptyTextStyle}>No company logos yet.</p>
+              <p style={emptyTextStyle}>{t("noCompanyLogosYet")}</p>
             ) : (
               <div style={{ overflow: "hidden", width: "100%" }}>
                 <div style={companyTrackStyle}>
@@ -468,20 +476,20 @@ function Dashboard() {
                   <Newspaper size={18} />
                 </div>
                 <div>
-                  <div style={sectionTitleStyle}>Smart Consulting Sport News</div>
+                  <div style={sectionTitleStyle}>{t("sportNews")}</div>
                   <div style={sectionSubtitleStyle}>
-                    Latest content and highlights from your platform
+                    {t("sportNewsSubtitle")}
                   </div>
                 </div>
               </div>
 
               <Link to="/news" style={viewAllBtnStyle}>
-                Go to News
+                {t("goToNews")}
               </Link>
             </div>
 
             {recentNews.length === 0 ? (
-              <p style={emptyTextStyle}>No news yet.</p>
+              <p style={emptyTextStyle}>{t("noNewsYet")}</p>
             ) : (
               <div style={newsGridStyle} className="dashboard-news-grid">
                 {recentNews.map((item) => (
@@ -499,7 +507,9 @@ function Dashboard() {
                             style={newsImageStyle}
                           />
                         ) : (
-                          <div style={newsImageFallbackStyle}>No image</div>
+                          <div style={newsImageFallbackStyle}>
+                            {t("noImage")}
+                          </div>
                         )}
                       </div>
 
@@ -529,16 +539,16 @@ function Dashboard() {
                   <CalendarDays size={18} />
                 </div>
                 <div>
-                  <div style={sectionTitleStyle}>5 Recent Matches</div>
+                  <div style={sectionTitleStyle}>{t("recentMatches5")}</div>
                   <div style={sectionSubtitleStyle}>
-                    Latest finished, live, or break-time matches
+                    {t("recentMatchesSubtitle")}
                   </div>
                 </div>
               </div>
             </div>
 
             {recentMatches.length === 0 ? (
-              <p style={emptyTextStyle}>No matches yet.</p>
+              <p style={emptyTextStyle}>{t("noMatchesYet")}</p>
             ) : (
               <div style={{ display: "grid", gap: "14px" }}>
                 {recentMatches.map((match) => {
@@ -578,7 +588,7 @@ function Dashboard() {
                         >
                           <span>{getTournamentName(match.tournament_id)}</span>
                           <span>
-                            {match.field || "No field"} • {match.match_date || "-"} •{" "}
+                            {match.field || t("noField")} • {match.match_date || "-"} •{" "}
                             {match.match_time || "-"}
                           </span>
                         </div>
@@ -592,7 +602,7 @@ function Dashboard() {
                                 background: getMatchStatusBg(match.status),
                               }}
                             >
-                              {match.status}
+                              {getTranslatedStatus(match.status)}
                             </div>
 
                             <div style={teamsColumnStyle}>
@@ -636,7 +646,7 @@ function Dashboard() {
                             {winnerName && (
                               <div style={winnerBadgeStyle}>
                                 <Flag size={14} />
-                                Winner: {winnerName}
+                                {t("winnerLabel")} {winnerName}
                               </div>
                             )}
                           </div>
