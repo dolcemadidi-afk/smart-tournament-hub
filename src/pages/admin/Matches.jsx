@@ -22,6 +22,7 @@ function Matches() {
   const [tournaments, setTournaments] = useState([]);
   const [teams, setTeams] = useState([]);
   const [matches, setMatches] = useState([]);
+  const [players, setPlayers] = useState([]);
   const [userRole, setUserRole] = useState(null);
   const [userTournamentId, setUserTournamentId] = useState(null);
   const [, setTick] = useState(0);
@@ -46,6 +47,13 @@ function Matches() {
     first: "",
     second: "",
     break: "",
+  });
+
+  const [editingScheduleMatchId, setEditingScheduleMatchId] = useState(null);
+  const [editSchedule, setEditSchedule] = useState({
+    date: "",
+    time: "",
+    field: "",
   });
 
   const [openMenuId, setOpenMenuId] = useState(null);
@@ -120,6 +128,20 @@ function Matches() {
     setTeams(data || []);
   };
 
+  const fetchPlayers = async () => {
+    const { data, error } = await supabase
+      .from("players")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching players:", error.message);
+      return;
+    }
+
+    setPlayers(data || []);
+  };
+
   const fetchMatches = async () => {
     const { data, error } = await supabase
       .from("matches")
@@ -140,6 +162,7 @@ function Matches() {
       await fetchUserContext();
       await fetchTournaments();
       await fetchTeams();
+      await fetchPlayers();
       await fetchMatches();
     };
 
@@ -163,6 +186,10 @@ function Matches() {
     return () => window.removeEventListener("click", handleClickOutside);
   }, []);
 
+  const canManageMatches =
+    userRole === "organizer" || userRole === "staff";
+  const isOrganizer = userRole === "organizer";
+
   const visibleTournaments = useMemo(() => {
     if (userRole === "team_manager") {
       return tournaments.filter(
@@ -185,23 +212,39 @@ function Matches() {
     );
   }, [matches, userRole, userTournamentId]);
 
-  const getTeam = (teamId) => teams.find((t) => t.id === teamId);
+  const getTeam = (teamId) =>
+    teams.find((t) => String(t.id) === String(teamId));
 
   const getTeamName = (teamId) => {
-    const team = teams.find((t) => t.id === teamId);
+    const team = teams.find((t) => String(t.id) === String(teamId));
     return team
       ? team.company_name || team.team_name || "Unknown Team"
       : "Unknown Team";
   };
 
   const getTeamLogo = (teamId) => {
-    const team = teams.find((t) => t.id === teamId);
+    const team = teams.find((t) => String(t.id) === String(teamId));
     return team?.logo_url || "";
   };
 
   const getTournamentName = (id) => {
-    const tournament = tournaments.find((t) => t.id === id);
+    const tournament = tournaments.find((t) => String(t.id) === String(id));
     return tournament ? tournament.name : "Unknown Tournament";
+  };
+
+  const getPlayerById = (playerId) => {
+    return players.find((p) => String(p.id) === String(playerId)) || null;
+  };
+
+  const getMotmLabel = (match) => {
+    if (!match?.man_of_the_match_player_id) return "";
+
+    const player = getPlayerById(match.man_of_the_match_player_id);
+    if (!player) return "Man of the Match selected";
+
+    return `${player.full_name}${
+      player.jersey_number ? ` #${player.jersey_number}` : ""
+    }`;
   };
 
   const formatMMSS = (seconds) => {
@@ -296,6 +339,7 @@ function Matches() {
   }, [filteredMatches]);
 
   const stageOrder = [
+    "group",
     "round_1",
     "round_2",
     "round_3",
@@ -308,6 +352,7 @@ function Matches() {
   ];
 
   const stageLabels = {
+    group: "Group Stage",
     round_1: "Round 1",
     round_2: "Round 2",
     round_3: "Round 3",
@@ -334,6 +379,24 @@ function Matches() {
 
     return groups;
   }, [sortedMatches]);
+
+  const orderedStageKeys = useMemo(() => {
+    const existingDynamicStages = Object.keys(groupedMatches).filter(
+      (stageKey) =>
+        !stageOrder.includes(stageKey) &&
+        groupedMatches[stageKey]?.length > 0
+    );
+
+    return [...stageOrder, ...existingDynamicStages];
+  }, [groupedMatches]);
+
+  const getStageLabel = (stageKey) => {
+    if (stageLabels[stageKey]) return stageLabels[stageKey];
+
+    return String(stageKey)
+      .replaceAll("_", " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -375,6 +438,7 @@ function Matches() {
       first_half_minutes: Number(firstHalfMinutes),
       second_half_minutes: Number(secondHalfMinutes),
       break_minutes: Number(breakMinutes),
+      man_of_the_match_player_id: null,
     };
 
     const { error } = await supabase.from("matches").insert([matchPayload]);
@@ -493,6 +557,7 @@ function Matches() {
   const handleEditTime = (match) => {
     if (match.status === "live" || match.status === "finished") return;
 
+    setEditingScheduleMatchId(null);
     setEditingTimeMatchId(match.id);
     setEditTime({
       first: match.first_half_minutes || 22,
@@ -518,6 +583,38 @@ function Matches() {
     }
 
     setEditingTimeMatchId(null);
+    await fetchMatches();
+  };
+
+  const handleEditSchedule = (match) => {
+    if (match.status === "live" || match.status === "finished") return;
+
+    setEditingTimeMatchId(null);
+    setEditingScheduleMatchId(match.id);
+    setEditSchedule({
+      date: match.match_date || "",
+      time: match.match_time || "",
+      field: match.field || "",
+    });
+  };
+
+  const handleSaveSchedule = async (matchId) => {
+    const { error } = await supabase
+      .from("matches")
+      .update({
+        match_date: editSchedule.date || null,
+        match_time: editSchedule.time || null,
+        field: editSchedule.field || null,
+      })
+      .eq("id", matchId);
+
+    if (error) {
+      console.error("Error updating match schedule:", error.message);
+      alert("Error updating match schedule");
+      return;
+    }
+
+    setEditingScheduleMatchId(null);
     await fetchMatches();
   };
 
@@ -560,7 +657,7 @@ function Matches() {
     const isEditLocked =
       match.status === "live" || match.status === "finished";
     const isMenuOpen = openMenuId === match.id;
-    const isOrganizer = userRole === "organizer";
+    const motmText = getMotmLabel(match);
 
     return (
       <div key={match.id} style={matchCardStyle} className="matches-card">
@@ -627,6 +724,17 @@ function Matches() {
             </div>
           </div>
 
+          {match.man_of_the_match_player_id && (
+            <div style={motmChipStyle} className="matches-motm-chip">
+              <span style={motmChipIconStyle}>
+                <Trophy size={13} />
+              </span>
+              <span style={motmChipTextStyle} className="matches-motm-text">
+                MOTM: {motmText}
+              </span>
+            </div>
+          )}
+
           <div style={matchFooterStyle}>
             <div
               style={{ position: "relative" }}
@@ -645,7 +753,7 @@ function Matches() {
 
               {isMenuOpen && (
                 <div style={dropdownMenuStyle} className="matches-dropdown">
-                  {isOrganizer ? (
+                  {canManageMatches ? (
                     <>
                       {match.status === "scheduled" ? (
                         <button
@@ -683,23 +791,41 @@ function Matches() {
                           cursor: isEditLocked ? "not-allowed" : "pointer",
                         }}
                       >
-                        <Pencil size={14} />
+                        <TimerReset size={14} />
                         Edit Time
                       </button>
 
                       <button
                         onClick={() => {
                           setOpenMenuId(null);
-                          handleDelete(match.id);
+                          handleEditSchedule(match);
                         }}
+                        disabled={isEditLocked}
                         style={{
                           ...dropdownItemStyle,
-                          color: "#cf2136",
+                          opacity: isEditLocked ? 0.5 : 1,
+                          cursor: isEditLocked ? "not-allowed" : "pointer",
                         }}
                       >
-                        <Trash2 size={14} />
-                        Delete
+                        <Pencil size={14} />
+                        Edit Schedule
                       </button>
+
+                      {isOrganizer && (
+                        <button
+                          onClick={() => {
+                            setOpenMenuId(null);
+                            handleDelete(match.id);
+                          }}
+                          style={{
+                            ...dropdownItemStyle,
+                            color: "#cf2136",
+                          }}
+                        >
+                          <Trash2 size={14} />
+                          Delete
+                        </button>
+                      )}
                     </>
                   ) : (
                     <button
@@ -719,7 +845,7 @@ function Matches() {
           </div>
         </div>
 
-        {editingTimeMatchId === match.id && userRole === "organizer" && (
+        {editingTimeMatchId === match.id && canManageMatches && (
           <div style={editPanelStyle}>
             <div style={editPanelTitleStyle}>
               <TimerReset size={16} />
@@ -768,6 +894,61 @@ function Matches() {
 
               <button
                 onClick={() => setEditingTimeMatchId(null)}
+                style={cancelButtonStyle}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {editingScheduleMatchId === match.id && canManageMatches && (
+          <div style={editPanelStyle}>
+            <div style={editPanelTitleStyle}>
+              <Pencil size={16} />
+              Update match schedule
+            </div>
+
+            <div style={scheduleEditGridStyle} className="matches-edit-grid">
+              <input
+                type="date"
+                value={editSchedule.date}
+                onChange={(e) =>
+                  setEditSchedule({ ...editSchedule, date: e.target.value })
+                }
+                style={smallInputStyle}
+              />
+
+              <input
+                type="time"
+                value={editSchedule.time}
+                onChange={(e) =>
+                  setEditSchedule({ ...editSchedule, time: e.target.value })
+                }
+                style={smallInputStyle}
+              />
+
+              <input
+                type="text"
+                placeholder="Field / Venue"
+                value={editSchedule.field}
+                onChange={(e) =>
+                  setEditSchedule({ ...editSchedule, field: e.target.value })
+                }
+                style={smallInputStyle}
+              />
+            </div>
+
+            <div style={editButtonsRowStyle} className="matches-edit-actions">
+              <button
+                onClick={() => handleSaveSchedule(match.id)}
+                style={saveButtonStyle}
+              >
+                Save
+              </button>
+
+              <button
+                onClick={() => setEditingScheduleMatchId(null)}
                 style={cancelButtonStyle}
               >
                 Cancel
@@ -839,6 +1020,16 @@ function Matches() {
               line-height: 1.35 !important;
             }
 
+            .matches-motm-chip {
+              padding: 8px 10px !important;
+              gap: 8px !important;
+            }
+
+            .matches-motm-text {
+              font-size: 12px !important;
+              line-height: 1.35 !important;
+            }
+
             .matches-edit-grid {
               grid-template-columns: 1fr !important;
             }
@@ -881,7 +1072,7 @@ function Matches() {
             </div>
           </div>
 
-          {userRole === "organizer" && (
+          {isOrganizer && (
             <>
               <div style={topActionBarStyle}>
                 <button
@@ -1008,6 +1199,7 @@ function Matches() {
                       onChange={(e) => setStage(e.target.value)}
                       style={inputStyle}
                     >
+                      <option value="group">Group Stage</option>
                       <option value="round_1">Round 1</option>
                       <option value="round_2">Round 2</option>
                       <option value="round_3">Round 3</option>
@@ -1072,14 +1264,14 @@ function Matches() {
             <div style={emptyStateStyle}>No matches yet.</div>
           ) : (
             <div style={{ display: "grid", gap: "24px" }}>
-              {stageOrder.map((stageKey) => {
+              {orderedStageKeys.map((stageKey) => {
                 const stageMatches = groupedMatches[stageKey] || [];
                 if (stageMatches.length === 0) return null;
 
                 return (
                   <div key={stageKey}>
                     <div style={stageHeaderStyle}>
-                      {stageLabels[stageKey] || stageKey}
+                      {getStageLabel(stageKey)}
                     </div>
 
                     <div style={{ display: "grid", gap: "16px" }}>
@@ -1411,6 +1603,39 @@ const teamLogoMiniFallbackStyle = {
   color: "#6b7280",
 };
 
+const motmChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "10px",
+  width: "fit-content",
+  maxWidth: "100%",
+  padding: "8px 12px",
+  borderRadius: "999px",
+  background: "rgba(245,158,11,0.10)",
+  border: "1px solid rgba(245,158,11,0.22)",
+};
+
+const motmChipIconStyle = {
+  width: "22px",
+  height: "22px",
+  minWidth: "22px",
+  borderRadius: "50%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "rgba(245,158,11,0.18)",
+  color: "#b45309",
+};
+
+const motmChipTextStyle = {
+  fontSize: "13px",
+  fontWeight: "700",
+  color: "#92400e",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
 const matchFooterStyle = {
   display: "flex",
   justifyContent: "flex-end",
@@ -1478,6 +1703,12 @@ const editPanelTitleStyle = {
 };
 
 const editInputsGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, 1fr)",
+  gap: "10px",
+};
+
+const scheduleEditGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(3, 1fr)",
   gap: "10px",

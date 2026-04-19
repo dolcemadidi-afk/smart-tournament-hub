@@ -29,6 +29,9 @@ function Standings() {
   const [userRole, setUserRole] = useState(null);
   const [userTeamId, setUserTeamId] = useState(null);
 
+  const [isGeneratingGroups, setIsGeneratingGroups] = useState(false);
+  const [isResettingGroups, setIsResettingGroups] = useState(false);
+
   const fetchTournaments = async () => {
     const { data, error } = await supabase
       .from("tournaments")
@@ -294,6 +297,7 @@ function Standings() {
   const totalGroups = Object.keys(groupedStandings).length;
   const totalFinishedMatches = groupMatches.length;
   const totalTeams = tournamentTeams.length;
+  const isOrganizer = userRole === "organizer";
 
   const toggleGroup = (groupName) => {
     setOpenGroups((prev) => ({
@@ -343,6 +347,138 @@ function Standings() {
   const getPlayerNameById = (playerId) => {
     const player = players.find((p) => String(p.id) === String(playerId));
     return player?.full_name || "Unknown";
+  };
+
+  const shuffleArray = (array) => {
+    const newArray = [...array];
+    for (let i = newArray.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+    return newArray;
+  };
+
+  const getGroupLabels = (count) => {
+    return Array.from({ length: count }, (_, index) =>
+      String.fromCharCode(65 + index)
+    );
+  };
+
+  const getGroupCount = (teamCount) => {
+    if (teamCount <= 4) return 1;
+    return Math.ceil(teamCount / 4);
+  };
+
+  const handleGenerateGroups = async () => {
+    if (!isOrganizer || !selectedTournamentId) return;
+    if (tournamentTeams.length === 0) return;
+
+    try {
+      setIsGeneratingGroups(true);
+
+      const shuffledTeams = shuffleArray(tournamentTeams);
+      const groupCount = getGroupCount(shuffledTeams.length);
+      const groupLabels = getGroupLabels(groupCount);
+
+      const teamUpdates = shuffledTeams.map((team, index) => {
+        const groupName = groupLabels[index % groupCount];
+        return {
+          id: team.id,
+          group_name: groupName,
+        };
+      });
+
+      for (const team of teamUpdates) {
+        const { error } = await supabase
+          .from("teams")
+          .update({ group_name: team.group_name })
+          .eq("id", team.id);
+
+        if (error) {
+          throw error;
+        }
+      }
+
+      const teamGroupMap = {};
+      teamUpdates.forEach((team) => {
+        teamGroupMap[String(team.id)] = team.group_name;
+      });
+
+      const tournamentGroupMatches = matches.filter(
+        (match) =>
+          String(match.tournament_id) === String(selectedTournamentId) &&
+          match.stage === "group"
+      );
+
+      for (const match of tournamentGroupMatches) {
+        const teamAGroup = teamGroupMap[String(match.team_a_id)];
+        const teamBGroup = teamGroupMap[String(match.team_b_id)];
+
+        const nextGroupName =
+          teamAGroup && teamBGroup && teamAGroup === teamBGroup
+            ? teamAGroup
+            : null;
+
+        const { error } = await supabase
+          .from("matches")
+          .update({ group_name: nextGroupName })
+          .eq("id", match.id);
+
+        if (error) {
+          throw error;
+        }
+      }
+
+      await fetchTeams();
+      await fetchMatches();
+    } catch (error) {
+      console.error("Error generating groups:", error.message);
+    } finally {
+      setIsGeneratingGroups(false);
+    }
+  };
+
+  const handleResetGroups = async () => {
+    if (!isOrganizer || !selectedTournamentId) return;
+
+    try {
+      setIsResettingGroups(true);
+
+      for (const team of tournamentTeams) {
+        const { error } = await supabase
+          .from("teams")
+          .update({ group_name: null })
+          .eq("id", team.id);
+
+        if (error) {
+          throw error;
+        }
+      }
+
+      const tournamentGroupMatches = matches.filter(
+        (match) =>
+          String(match.tournament_id) === String(selectedTournamentId) &&
+          match.stage === "group"
+      );
+
+      for (const match of tournamentGroupMatches) {
+        const { error } = await supabase
+          .from("matches")
+          .update({ group_name: null })
+          .eq("id", match.id);
+
+        if (error) {
+          throw error;
+        }
+      }
+
+      await fetchTeams();
+      await fetchMatches();
+    } catch (error) {
+      console.error("Error resetting groups:", error.message);
+    } finally {
+      setIsResettingGroups(false);
+    }
   };
 
   const topScorers = useMemo(() => {
@@ -695,6 +831,15 @@ function Standings() {
               padding: 8px 12px !important;
               font-size: 13px !important;
             }
+
+            .standings-organizer-actions {
+              width: 100% !important;
+              flex-direction: column !important;
+            }
+
+            .standings-organizer-actions button {
+              width: 100% !important;
+            }
           }
 
           @media (min-width: 769px) {
@@ -797,6 +942,41 @@ function Standings() {
               <div style={selectedTournamentBadgeStyle}>
                 <Trophy size={14} />
                 {selectedTournament.name}
+              </div>
+            )}
+
+            {isOrganizer && (
+              <div
+                className="standings-organizer-actions"
+                style={organizerActionsRowStyle}
+              >
+                <button
+                  type="button"
+                  onClick={handleGenerateGroups}
+                  disabled={!selectedTournamentId || isGeneratingGroups || isResettingGroups}
+                  style={{
+                    ...organizerActionButtonStyle,
+                    ...(isGeneratingGroups || !selectedTournamentId
+                      ? disabledActionButtonStyle
+                      : generateActionButtonStyle),
+                  }}
+                >
+                  {isGeneratingGroups ? "Generating..." : "Generate Groups"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResetGroups}
+                  disabled={!selectedTournamentId || isGeneratingGroups || isResettingGroups}
+                  style={{
+                    ...organizerActionButtonStyle,
+                    ...(isResettingGroups || !selectedTournamentId
+                      ? disabledActionButtonStyle
+                      : resetActionButtonStyle),
+                  }}
+                >
+                  {isResettingGroups ? "Resetting..." : "Reset Groups"}
+                </button>
               </div>
             )}
 
@@ -1363,6 +1543,37 @@ const selectedTournamentBadgeStyle = {
   padding: "8px 12px",
   fontSize: "13px",
   fontWeight: "700",
+};
+
+const organizerActionsRowStyle = {
+  display: "flex",
+  gap: "10px",
+  marginTop: "16px",
+  flexWrap: "wrap",
+};
+
+const organizerActionButtonStyle = {
+  padding: "10px 16px",
+  borderRadius: "999px",
+  border: "none",
+  fontWeight: "800",
+  cursor: "pointer",
+  color: "#fff",
+  transition: "0.2s ease",
+};
+
+const generateActionButtonStyle = {
+  background: "#109847",
+};
+
+const resetActionButtonStyle = {
+  background: "#cf2136",
+};
+
+const disabledActionButtonStyle = {
+  background: "#cbd5e1",
+  color: "#fff",
+  cursor: "not-allowed",
 };
 
 const tabsRowStyle = {

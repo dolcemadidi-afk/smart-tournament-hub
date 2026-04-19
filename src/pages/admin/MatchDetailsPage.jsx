@@ -327,8 +327,7 @@ function MatchDetailsPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const canManageMatch =
-    userRole === "organizer" || userRole === "staff";
+  const canManageMatch = userRole === "organizer" || userRole === "staff";
 
   const getTeamName = (teamId) => {
     const team = teams.find((t) => t.id === teamId);
@@ -345,6 +344,10 @@ function MatchDetailsPage() {
   const getPlayerName = (playerId) => {
     const player = players.find((p) => p.id === playerId);
     return player?.full_name || "Not selected";
+  };
+
+  const getPlayerById = (playerId) => {
+    return players.find((p) => p.id === playerId) || null;
   };
 
   const formatMMSS = (seconds) => {
@@ -1104,6 +1107,13 @@ function MatchDetailsPage() {
     return scoresMap;
   }, [goals, match]);
 
+  const motmPlayer = useMemo(() => {
+    if (!match?.man_of_the_match_player_id) return null;
+    return getPlayerById(match.man_of_the_match_player_id);
+  }, [match, players]);
+
+  const motmTeamName = motmPlayer ? getTeamName(motmPlayer.team_id) : "";
+
   if (!match) {
     return (
       <div style={pageStyle} className="match-details-page">
@@ -1525,6 +1535,15 @@ function MatchDetailsPage() {
               width: 100% !important;
               max-width: 100% !important;
             }
+
+            .match-motm-card {
+              flex-direction: column !important;
+              text-align: center !important;
+            }
+
+            .match-motm-content {
+              text-align: center !important;
+            }
           }
         `}
       </style>
@@ -1634,7 +1653,7 @@ function MatchDetailsPage() {
                     Man of the Match
                   </div>
 
-                  {canManageMatch ? (
+                  {canManageMatch && (
                     <div style={motmEditorStyle}>
                       <select
                         value={motmPlayerId}
@@ -1660,10 +1679,39 @@ function MatchDetailsPage() {
                         {motmSaving ? "Saving..." : "Save"}
                       </button>
                     </div>
-                  ) : (
-                    <div style={motmNameStyle}>
-                      {getPlayerName(match.man_of_the_match_player_id)}
+                  )}
+
+                  {motmPlayer ? (
+                    <div style={motmCardStyle} className="match-motm-card">
+                      <div style={motmAvatarWrapStyle}>
+                        {motmPlayer.photo_url ? (
+                          <img
+                            src={motmPlayer.photo_url}
+                            alt={motmPlayer.full_name}
+                            style={motmAvatarImageStyle}
+                          />
+                        ) : (
+                          <span style={motmAvatarFallbackStyle}>
+                            {motmPlayer.full_name?.charAt(0)?.toUpperCase() || "P"}
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={motmContentStyle} className="match-motm-content">
+                        <div style={motmPlayerNameStyle}>
+                          {motmPlayer.full_name}
+                        </div>
+                        <div style={motmMetaStyle}>
+                          {motmPlayer.jersey_number
+                            ? `#${motmPlayer.jersey_number} • `
+                            : ""}
+                          {motmPlayer.role || "Player"}
+                        </div>
+                        <div style={motmMetaStyle}>{motmTeamName}</div>
+                      </div>
                     </div>
+                  ) : (
+                    <div style={motmEmptyStyle}>No Man of the Match selected yet.</div>
                   )}
                 </div>
               </div>
@@ -1986,7 +2034,7 @@ const motmTitleStyle = {
   alignItems: "center",
   gap: "8px",
   fontWeight: "800",
-  marginBottom: "8px",
+  marginBottom: "10px",
   color: "#111827",
 };
 
@@ -2007,9 +2055,67 @@ const motmButtonStyle = {
   fontWeight: "700",
 };
 
-const motmNameStyle = {
-  fontWeight: "700",
+const motmEmptyStyle = {
+  marginTop: "12px",
+  color: "#6b7280",
+  fontWeight: "600",
+  fontSize: "14px",
+};
+
+const motmCardStyle = {
+  marginTop: "14px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "14px",
+  padding: "14px",
+  borderRadius: "16px",
+  background: "rgba(245,158,11,0.10)",
+  border: "1px solid rgba(245,158,11,0.22)",
+  maxWidth: "420px",
+  marginInline: "auto",
+};
+
+const motmAvatarWrapStyle = {
+  width: "64px",
+  height: "64px",
+  minWidth: "64px",
+  borderRadius: "50%",
+  background: "#fff",
+  border: "1px solid rgba(245,158,11,0.22)",
+  overflow: "hidden",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+const motmAvatarImageStyle = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+};
+
+const motmAvatarFallbackStyle = {
+  fontSize: "24px",
+  fontWeight: "800",
+  color: "#b45309",
+};
+
+const motmContentStyle = {
+  textAlign: "left",
+};
+
+const motmPlayerNameStyle = {
+  fontSize: "18px",
+  fontWeight: "800",
   color: "#111827",
+};
+
+const motmMetaStyle = {
+  marginTop: "4px",
+  fontSize: "13px",
+  color: "#6b7280",
+  fontWeight: "600",
 };
 
 const actionsRowStyle = {

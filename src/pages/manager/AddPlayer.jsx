@@ -57,7 +57,11 @@ function AddPlayer() {
   }, []);
 
   useEffect(() => {
-    if (!selectedTeamIdFromUrl || teams.length === 0 || userRole === "team_manager") {
+    if (
+      !selectedTeamIdFromUrl ||
+      teams.length === 0 ||
+      userRole === "team_manager"
+    ) {
       return;
     }
 
@@ -241,7 +245,9 @@ function AddPlayer() {
     }
 
     if (selectedTeamIdFromUrl) {
-      return teams.filter((team) => String(team.id) === String(selectedTeamIdFromUrl));
+      return teams.filter(
+        (team) => String(team.id) === String(selectedTeamIdFromUrl)
+      );
     }
 
     if (!listTournamentId) return [];
@@ -334,7 +340,7 @@ function AddPlayer() {
   const canEditPlayers =
     isOrganizer || isStaff || (isTeamManager && !teamManagerLocked);
 
-  const canDeletePlayers = isOrganizer;
+  const canDeletePlayers = isOrganizer || isStaff;
 
   const resetForm = () => {
     setEditingPlayerId(null);
@@ -406,7 +412,9 @@ function AddPlayer() {
     e.preventDefault();
 
     if (!canEditPlayers) {
-      alert("Player registration is locked because the tournament has already started.");
+      alert(
+        "Player registration is locked because the tournament has already started."
+      );
       return;
     }
 
@@ -445,7 +453,9 @@ function AddPlayer() {
         COUNTED_ROLES.includes(String(player.role || "").toLowerCase())
     );
 
-    const isCountedRole = COUNTED_ROLES.includes(String(role || "").toLowerCase());
+    const isCountedRole = COUNTED_ROLES.includes(
+      String(role || "").toLowerCase()
+    );
     const currentCount = teamPlayers.length;
     const maxAllowed = currentTournament?.max_players ?? null;
 
@@ -542,7 +552,9 @@ function AddPlayer() {
 
   const handleEdit = (player) => {
     if (!canEditPlayers) {
-      alert("Player registration is locked because the tournament has already started.");
+      alert(
+        "Player registration is locked because the tournament has already started."
+      );
       return;
     }
 
@@ -568,7 +580,7 @@ function AddPlayer() {
 
   const handleDelete = async (id) => {
     if (!canDeletePlayers) {
-      alert("Only organizer can delete players.");
+      alert("Only organizer and staff can delete players.");
       return;
     }
 
@@ -590,6 +602,55 @@ function AddPlayer() {
     }
 
     await fetchPlayers();
+  };
+
+  const handleDeleteAllPlayers = async () => {
+    if (!canDeletePlayers) {
+      alert("Only organizer and staff can delete players.");
+      return;
+    }
+
+    if (visiblePlayers.length === 0) {
+      alert("No players to delete.");
+      return;
+    }
+
+    const confirmDelete = window.confirm(
+      "Are you sure you want to delete ALL currently visible players?"
+    );
+    if (!confirmDelete) return;
+
+    const secondConfirm = window.prompt(
+      'Type DELETE to confirm removing all visible players'
+    );
+    if (secondConfirm !== "DELETE") {
+      alert("Bulk delete cancelled");
+      return;
+    }
+
+    const visiblePlayerIds = visiblePlayers.map((player) => player.id);
+
+    const { error } = await supabase
+      .from("players")
+      .delete()
+      .in("id", visiblePlayerIds);
+
+    if (error) {
+      console.error("Error deleting all players:", error.message);
+      alert("Failed to delete all players");
+      return;
+    }
+
+    if (
+      editingPlayerId &&
+      visiblePlayerIds.some((id) => String(id) === String(editingPlayerId))
+    ) {
+      resetForm();
+      setShowPlayerForm(false);
+    }
+
+    await fetchPlayers();
+    alert("Visible players deleted successfully.");
   };
 
   const totalPlayers = countedVisiblePlayers.length;
@@ -748,6 +809,15 @@ function AddPlayer() {
               flex-direction: column !important;
               align-items: flex-start !important;
             }
+
+            .players-filter-actions {
+              width: 100% !important;
+              flex-direction: column !important;
+            }
+
+            .players-filter-actions button {
+              width: 100% !important;
+            }
           }
         `}
       </style>
@@ -800,7 +870,8 @@ function AddPlayer() {
           {teamManagerLocked && (
             <div style={lockedBannerStyle}>
               <Lock size={18} />
-              Player registration is locked because this tournament has already started.
+              Player registration is locked because this tournament has already
+              started.
             </div>
           )}
 
@@ -949,19 +1020,25 @@ function AddPlayer() {
                   ) : null}
 
                   {teamId && isTeamBelowMinimum ? (
-                    <div style={warningBannerStyle} className="players-warning-row">
+                    <div
+                      style={warningBannerStyle}
+                      className="players-warning-row"
+                    >
                       <AlertTriangle size={16} />
-                      Only players and goalkeepers are counted. This team currently has{" "}
-                      {currentTeamCount} counted members and needs at least{" "}
-                      {minPlayersRequired}.
+                      Only players and goalkeepers are counted. This team
+                      currently has {currentTeamCount} counted members and needs
+                      at least {minPlayersRequired}.
                     </div>
                   ) : null}
 
                   {teamId && isTeamAtMaximum && !editingPlayerId ? (
-                    <div style={dangerBannerStyle} className="players-warning-row">
+                    <div
+                      style={dangerBannerStyle}
+                      className="players-warning-row"
+                    >
                       <AlertTriangle size={16} />
-                      Only players and goalkeepers are counted. This team already reached the maximum allowed of{" "}
-                      {maxPlayersAllowed}.
+                      Only players and goalkeepers are counted. This team
+                      already reached the maximum allowed of {maxPlayersAllowed}.
                     </div>
                   ) : null}
 
@@ -1028,7 +1105,10 @@ function AddPlayer() {
                     </small>
                   </Field>
 
-                  <div style={formActionsStyle} className="players-form-actions">
+                  <div
+                    style={formActionsStyle}
+                    className="players-form-actions"
+                  >
                     <button
                       type="submit"
                       disabled={
@@ -1072,10 +1152,7 @@ function AddPlayer() {
           </div>
 
           <div style={sectionCardStyle} className="players-section-card">
-            <div
-              style={filterHeaderStyle}
-              className="players-filter-header"
-            >
+            <div style={filterHeaderStyle} className="players-filter-header">
               <div style={sectionTitleWrapStyle}>
                 <div style={sectionIconFilterStyle}>
                   <Filter size={18} />
@@ -1088,9 +1165,28 @@ function AddPlayer() {
                 </div>
               </div>
 
-              <button type="button" onClick={clearFilters} style={clearFilterButtonStyle}>
-                Clear Filters
-              </button>
+              <div style={filterActionsWrapStyle} className="players-filter-actions">
+                {canDeletePlayers && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteAllPlayers}
+                    style={deleteAllButtonStyle}
+                  >
+                    <span style={buttonInnerStyle}>
+                      <Trash2 size={14} />
+                      Remove All Visible Players
+                    </span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  style={clearFilterButtonStyle}
+                >
+                  Clear Filters
+                </button>
+              </div>
             </div>
 
             <div style={filterGridStyle} className="players-filter-grid">
@@ -1210,7 +1306,10 @@ function AddPlayer() {
                             {player.full_name}
                           </h3>
 
-                          <div style={roleBadgeStyle} className="players-role-badge">
+                          <div
+                            style={roleBadgeStyle}
+                            className="players-role-badge"
+                          >
                             {player.role || "No role"}
                           </div>
                         </div>
@@ -1239,8 +1338,16 @@ function AddPlayer() {
                             value={player.jersey_number || "-"}
                             compact
                           />
-                          <DetailBox label="Age" value={player.age || "-"} compact />
-                          <DetailBox label="Role" value={player.role || "-"} compact />
+                          <DetailBox
+                            label="Age"
+                            value={player.age || "-"}
+                            compact
+                          />
+                          <DetailBox
+                            label="Role"
+                            value={player.role || "-"}
+                            compact
+                          />
                         </div>
                       </div>
                     </div>
@@ -1553,12 +1660,29 @@ const filterHeaderStyle = {
   marginBottom: "18px",
 };
 
+const filterActionsWrapStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  flexWrap: "wrap",
+};
+
 const clearFilterButtonStyle = {
   background: "#f3f4f6",
   color: "#111827",
   padding: "10px 14px",
   borderRadius: "10px",
   border: "1px solid #e5e7eb",
+  fontWeight: "700",
+  cursor: "pointer",
+};
+
+const deleteAllButtonStyle = {
+  background: "#991b1b",
+  color: "#fff",
+  padding: "10px 14px",
+  borderRadius: "10px",
+  border: "none",
   fontWeight: "700",
   cursor: "pointer",
 };

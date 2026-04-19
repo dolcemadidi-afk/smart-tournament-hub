@@ -41,7 +41,6 @@ function Dashboard() {
         supabase
           .from("matches")
           .select("*")
-          .in("status", ["finished", "live", "break"])
           .order("match_date", { ascending: false })
           .order("match_time", { ascending: false }),
 
@@ -145,6 +144,7 @@ function Dashboard() {
     if (status === "live") return "#cf2136";
     if (status === "break") return "#f59e0b";
     if (status === "finished") return "#6b7280";
+    if (status === "postponed") return "#7c3aed";
     return "#1476b6";
   };
 
@@ -152,6 +152,7 @@ function Dashboard() {
     if (status === "live") return "rgba(207,33,54,0.10)";
     if (status === "break") return "rgba(245,158,11,0.12)";
     if (status === "finished") return "rgba(107,114,128,0.10)";
+    if (status === "postponed") return "rgba(124,58,237,0.10)";
     return "rgba(20,118,182,0.10)";
   };
 
@@ -524,7 +525,7 @@ function Dashboard() {
                 <div>
                   <div style={sectionTitleStyle}>5 Recent Matches</div>
                   <div style={sectionSubtitleStyle}>
-                    Latest finished, live, or break-time matches
+                    Latest updated matches from your platform
                   </div>
                 </div>
               </div>
@@ -543,7 +544,8 @@ function Dashboard() {
                   ].includes(match.stage);
 
                   const isDraw =
-                    Number(match.team_a_score ?? 0) === Number(match.team_b_score ?? 0);
+                    Number(match.team_a_score ?? 0) ===
+                    Number(match.team_b_score ?? 0);
 
                   const showPenalties =
                     isKnockout &&

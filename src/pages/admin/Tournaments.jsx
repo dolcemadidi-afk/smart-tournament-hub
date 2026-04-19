@@ -770,7 +770,7 @@ function Tournaments() {
 
       groupsMap[groupName][team.id] = {
         team_id: team.id,
-        team_name: team.team_name,
+        team_name: team.company_name || team.team_name,
         group_name: groupName,
         mp: 0,
         w: 0,
@@ -1260,6 +1260,96 @@ function Tournaments() {
     alert("Final and 3rd Place matches generated successfully.");
   };
 
+  const renderSlotList = (title, date, slots) => (
+    <div style={previewStageCardStyle}>
+      <div style={previewStageTitleStyle}>{title}</div>
+      <div style={previewStageDateStyle}>Date: {date || "-"}</div>
+
+      <div style={previewSlotListStyle}>
+        {slots.map((slot, index) => (
+          <div key={`${title}-${index}`} style={previewSlotItemStyle}>
+            <span style={previewSlotIndexStyle}>Match {index + 1}</span>
+            <span style={previewSlotValueStyle}>
+              {slot.time || "--:--"}
+              {slot.field ? ` • ${slot.field}` : ""}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderSchedulePreview = () => {
+    const hasGroupSchedule =
+      round1Date ||
+      round2Date ||
+      round3Date ||
+      round1Slots.some((slot) => slot.time || slot.field) ||
+      round2Slots.some((slot) => slot.time || slot.field) ||
+      round3Slots.some((slot) => slot.time || slot.field);
+
+    const hasKnockoutSchedule =
+      quarterfinalDate ||
+      semifinalDate ||
+      finalDate ||
+      thirdPlaceDate ||
+      quarterfinalSlots.some((slot) => slot.time || slot.field) ||
+      semifinalSlots.some((slot) => slot.time || slot.field) ||
+      finalSlot.time ||
+      finalSlot.field ||
+      thirdPlaceSlot.time ||
+      thirdPlaceSlot.field;
+
+    if (!hasGroupSchedule && !hasKnockoutSchedule) return null;
+
+    return (
+      <div style={previewWrapStyle}>
+        <div style={previewHeaderStyle}>Entered Match Schedule Preview</div>
+
+        {hasGroupSchedule && (
+          <div style={previewGridStyle}>
+            {renderSlotList("Round 1", round1Date, round1Slots)}
+            {renderSlotList("Round 2", round2Date, round2Slots)}
+            {renderSlotList("Round 3", round3Date, round3Slots)}
+          </div>
+        )}
+
+        {hasKnockoutSchedule && (
+          <div style={{ ...previewGridStyle, marginTop: "14px" }}>
+            {renderSlotList("Quarterfinals", quarterfinalDate, quarterfinalSlots)}
+            {renderSlotList("Semifinals", semifinalDate, semifinalSlots)}
+
+            <div style={previewStageCardStyle}>
+              <div style={previewStageTitleStyle}>Final</div>
+              <div style={previewStageDateStyle}>Date: {finalDate || "-"}</div>
+              <div style={previewSlotItemStyle}>
+                <span style={previewSlotIndexStyle}>Final Match</span>
+                <span style={previewSlotValueStyle}>
+                  {finalSlot.time || "--:--"}
+                  {finalSlot.field ? ` • ${finalSlot.field}` : ""}
+                </span>
+              </div>
+            </div>
+
+            <div style={previewStageCardStyle}>
+              <div style={previewStageTitleStyle}>3rd Place</div>
+              <div style={previewStageDateStyle}>
+                Date: {thirdPlaceDate || "-"}
+              </div>
+              <div style={previewSlotItemStyle}>
+                <span style={previewSlotIndexStyle}>3rd Place Match</span>
+                <span style={previewSlotValueStyle}>
+                  {thirdPlaceSlot.time || "--:--"}
+                  {thirdPlaceSlot.field ? ` • ${thirdPlaceSlot.field}` : ""}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const showSection = (key) => (!isMobile ? true : openSections[key]);
 
   return (
@@ -1282,7 +1372,6 @@ function Tournaments() {
             max-width: 100%;
             min-width: 0;
             box-sizing: border-box;
-            color: #111827;
             background: #ffffff;
             min-height: 48px;
             line-height: 1.2;
@@ -1303,6 +1392,18 @@ function Tournaments() {
             overflow: hidden;
           }
 
+          .tour-list-head {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 16px;
+            align-items: start;
+          }
+
+          .tour-status-wrap {
+            display: flex;
+            justify-content: flex-end;
+          }
+
           @media (max-width: 1024px) {
             .tour-form-grid,
             .tour-config-grid,
@@ -1317,6 +1418,14 @@ function Tournaments() {
 
             .tour-actions {
               width: 100% !important;
+              justify-content: flex-start !important;
+            }
+
+            .tour-list-head {
+              grid-template-columns: 1fr !important;
+            }
+
+            .tour-status-wrap {
               justify-content: flex-start !important;
             }
           }
@@ -1394,6 +1503,11 @@ function Tournaments() {
             .tour-meta {
               font-size: 13px !important;
               line-height: 1.5 !important;
+            }
+
+            .tour-list-info {
+              flex-direction: column !important;
+              align-items: flex-start !important;
             }
           }
         `}
@@ -1834,11 +1948,11 @@ function Tournaments() {
               <div style={{ display: "grid", gap: "18px" }}>
                 {tournaments.map((t) => (
                   <div key={t.id} style={tournamentCardStyle}>
-                    <div
-                      style={tournamentHeaderRowStyle}
-                      className="tour-header-row"
-                    >
-                      <div style={tournamentInfoWrapStyle}>
+                    <div className="tour-list-head">
+                      <div
+                        style={tournamentInfoWrapStyle}
+                        className="tour-list-info"
+                      >
                         <div style={tournamentLogoWrapStyle}>
                           {t.logo_url ? (
                             <img
@@ -1853,16 +1967,20 @@ function Tournaments() {
                           )}
                         </div>
 
-                        <div style={{ minWidth: 0 }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
                           <h3 style={tournamentNameStyle} className="tour-name">
                             {t.name}
                           </h3>
+
                           <div style={tournamentMetaStyle} className="tour-meta">
-                            {t.type || "-"} • {t.format || "-"} • {t.venue || "-"}
+                            {[t.type, t.format, t.venue].filter(Boolean).join(" • ") ||
+                              "-"}
                           </div>
+
                           <div style={tournamentDateStyle}>
                             {t.start_date || "-"} → {t.end_date || "-"}
                           </div>
+
                           <div style={tournamentRulesStyle}>
                             <span style={rulePillStyle}>
                               <Users size={13} />
@@ -1880,19 +1998,21 @@ function Tournaments() {
                         </div>
                       </div>
 
-                      <select
-                        value={t.status || "upcoming"}
-                        onChange={(e) => handleChangeStatus(t.id, e.target.value)}
-                        style={{
-                          ...statusSelectStyle,
-                          ...getStatusStyle(t.status),
-                        }}
-                        className="tour-select"
-                      >
-                        <option value="upcoming">Upcoming</option>
-                        <option value="ongoing">Ongoing</option>
-                        <option value="completed">Completed</option>
-                      </select>
+                      <div className="tour-status-wrap">
+                        <select
+                          value={t.status || "upcoming"}
+                          onChange={(e) => handleChangeStatus(t.id, e.target.value)}
+                          style={{
+                            ...statusSelectStyle,
+                            ...getStatusStyle(t.status),
+                          }}
+                          className="tour-select"
+                        >
+                          <option value="upcoming">Upcoming</option>
+                          <option value="ongoing">Ongoing</option>
+                          <option value="completed">Completed</option>
+                        </select>
+                      </div>
                     </div>
 
                     <div style={actionWrapStyle} className="tour-actions">
@@ -1933,6 +2053,8 @@ function Tournaments() {
                         onClick={() => handleDelete(t.id)}
                       />
                     </div>
+
+                    {renderSchedulePreview()}
                   </div>
                 ))}
               </div>
@@ -2342,22 +2464,16 @@ const emptyStateStyle = {
 
 const tournamentCardStyle = {
   border: "1px solid #e5e7eb",
-  borderRadius: "16px",
-  padding: "16px",
+  borderRadius: "18px",
+  padding: "18px",
   background: "#fafafa",
-};
-
-const tournamentHeaderRowStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
+  display: "grid",
   gap: "16px",
-  marginBottom: "14px",
 };
 
 const tournamentInfoWrapStyle = {
   display: "flex",
-  alignItems: "center",
+  alignItems: "flex-start",
   gap: "14px",
   minWidth: 0,
   flex: 1,
@@ -2390,51 +2506,53 @@ const tournamentLogoFallbackStyle = {
 
 const tournamentNameStyle = {
   margin: 0,
-  fontSize: "22px",
+  fontSize: "24px",
   fontWeight: "800",
   color: "#111827",
   lineHeight: 1.2,
 };
 
 const tournamentMetaStyle = {
-  marginTop: "8px",
+  marginTop: "4px",
   fontSize: "14px",
   color: "#4b5563",
-  fontWeight: "500",
+  fontWeight: "600",
 };
 
 const tournamentDateStyle = {
-  marginTop: "6px",
-  fontSize: "13px",
+  marginTop: "8px",
+  fontSize: "14px",
   color: "#6b7280",
+  fontWeight: "700",
 };
 
 const tournamentRulesStyle = {
+  marginTop: "12px",
   display: "flex",
-  gap: "8px",
   flexWrap: "wrap",
-  marginTop: "10px",
+  gap: "8px",
 };
 
 const rulePillStyle = {
   display: "inline-flex",
   alignItems: "center",
   gap: "6px",
+  padding: "8px 10px",
+  borderRadius: "999px",
   background: "#eef4fb",
   color: "#1476b6",
-  border: "1px solid #dbe7f4",
-  borderRadius: "999px",
-  padding: "6px 10px",
   fontSize: "12px",
   fontWeight: "700",
+  border: "1px solid #dbe7f4",
 };
 
 const statusSelectStyle = {
+  minWidth: "140px",
   padding: "10px 12px",
   borderRadius: "10px",
   fontWeight: "700",
-  outline: "none",
   cursor: "pointer",
+  outline: "none",
 };
 
 const actionWrapStyle = {
@@ -2444,9 +2562,9 @@ const actionWrapStyle = {
 };
 
 const actionButtonStyle = {
-  color: "#fff",
   border: "none",
-  padding: "10px 12px",
+  color: "#fff",
+  padding: "10px 14px",
   borderRadius: "10px",
   cursor: "pointer",
   fontWeight: "700",
@@ -2457,6 +2575,74 @@ const actionButtonInnerStyle = {
   display: "inline-flex",
   alignItems: "center",
   gap: "6px",
+};
+
+const previewWrapStyle = {
+  marginTop: "14px",
+  borderTop: "1px solid #e5e7eb",
+  paddingTop: "14px",
+};
+
+const previewHeaderStyle = {
+  fontSize: "15px",
+  fontWeight: "800",
+  color: "#111827",
+  marginBottom: "12px",
+};
+
+const previewGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gap: "12px",
+};
+
+const previewStageCardStyle = {
+  border: "1px solid #e5e7eb",
+  borderRadius: "14px",
+  background: "#ffffff",
+  padding: "12px",
+};
+
+const previewStageTitleStyle = {
+  fontSize: "14px",
+  fontWeight: "800",
+  color: "#111827",
+  marginBottom: "6px",
+};
+
+const previewStageDateStyle = {
+  fontSize: "12px",
+  fontWeight: "700",
+  color: "#64748b",
+  marginBottom: "10px",
+};
+
+const previewSlotListStyle = {
+  display: "grid",
+  gap: "8px",
+};
+
+const previewSlotItemStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "10px",
+  padding: "8px 10px",
+  borderRadius: "10px",
+  background: "#f8fafc",
+  border: "1px solid #e5e7eb",
+  flexWrap: "wrap",
+};
+
+const previewSlotIndexStyle = {
+  fontSize: "12px",
+  fontWeight: "700",
+  color: "#334155",
+};
+
+const previewSlotValueStyle = {
+  fontSize: "12px",
+  fontWeight: "700",
+  color: "#111827",
 };
 
 export default Tournaments;
