@@ -35,6 +35,7 @@ function Matches() {
   const [field, setField] = useState("");
   const [status, setStatus] = useState("scheduled");
   const [stage, setStage] = useState("round_1");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   const [firstHalfMinutes, setFirstHalfMinutes] = useState(22);
   const [secondHalfMinutes, setSecondHalfMinutes] = useState(22);
@@ -204,13 +205,19 @@ function Matches() {
     (team) => String(team.tournament_id) === String(tournamentId)
   );
 
-  const filteredMatches = useMemo(() => {
+  const tournamentScopedMatches = useMemo(() => {
     if (userRole !== "team_manager") return matches;
 
     return matches.filter(
       (m) => String(m.tournament_id) === String(userTournamentId)
     );
   }, [matches, userRole, userTournamentId]);
+
+  const filteredMatches = useMemo(() => {
+    if (statusFilter === "all") return tournamentScopedMatches;
+
+    return tournamentScopedMatches.filter((match) => match.status === statusFilter);
+  }, [tournamentScopedMatches, statusFilter]);
 
   const getTeam = (teamId) =>
     teams.find((t) => String(t.id) === String(teamId));
@@ -398,6 +405,13 @@ function Matches() {
       .replace(/\b\w/g, (char) => char.toUpperCase());
   };
 
+  const filterOptions = [
+    { key: "all", label: "All" },
+    { key: "scheduled", label: "Scheduled" },
+    { key: "live", label: "Live" },
+    { key: "finished", label: "Finished" },
+  ];
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -520,7 +534,6 @@ function Matches() {
     }
 
     await fetchMatches();
-    alert("All matches deleted successfully");
   };
 
   const handleStartMatch = async (matchId) => {
@@ -644,9 +657,15 @@ function Matches() {
     const teamAPenalties = match.team_a_penalties ?? null;
     const teamBPenalties = match.team_b_penalties ?? null;
 
-    const isKnockout = ["quarterfinal", "semifinal", "final"].includes(
-      match.stage
-    );
+    const isKnockout = [
+      "quarterfinal",
+      "semifinal",
+      "final",
+      "third_place",
+      "round_of_16",
+      "round_of_32",
+      "round_of_64",
+    ].includes(match.stage);
     const isDraw = teamAScore === teamBScore;
     const showPenalties =
       isKnockout &&
@@ -684,58 +703,17 @@ function Matches() {
         </div>
 
         <div style={matchCardBodyStyle} className="matches-card-body">
-          <div
-            style={{
-              ...statusPillStyle,
-              color: getStatusColor(match),
-              background: getStatusSoftBg(match),
-            }}
-          >
-            {getStatusText(match)}
-          </div>
-
-          <div style={teamsColumnStyle}>
-            <div style={teamRowAlignedStyle}>
-              <div style={teamInfoStyle}>
-                {renderTeamLogo(match.team_a_id)}
-                <span style={teamNameTextStyle} className="matches-team-name">
-                  {getTeamName(match.team_a_id)}
-                </span>
-              </div>
-
-              <span style={scoreInlineStyle} className="matches-score">
-                {teamAScore}
-                {showPenalties && ` (${teamAPenalties})`}
-              </span>
+          <div style={statusActionRowStyle} className="matches-status-actions">
+            <div
+              style={{
+                ...statusPillStyle,
+                color: getStatusColor(match),
+                background: getStatusSoftBg(match),
+              }}
+            >
+              {getStatusText(match)}
             </div>
 
-            <div style={teamRowAlignedStyle}>
-              <div style={teamInfoStyle}>
-                {renderTeamLogo(match.team_b_id)}
-                <span style={teamNameTextStyle} className="matches-team-name">
-                  {getTeamName(match.team_b_id)}
-                </span>
-              </div>
-
-              <span style={scoreInlineStyle} className="matches-score">
-                {teamBScore}
-                {showPenalties && ` (${teamBPenalties})`}
-              </span>
-            </div>
-          </div>
-
-          {match.man_of_the_match_player_id && (
-            <div style={motmChipStyle} className="matches-motm-chip">
-              <span style={motmChipIconStyle}>
-                <Trophy size={13} />
-              </span>
-              <span style={motmChipTextStyle} className="matches-motm-text">
-                MOTM: {motmText}
-              </span>
-            </div>
-          )}
-
-          <div style={matchFooterStyle}>
             <div
               style={{ position: "relative" }}
               onClick={(e) => e.stopPropagation()}
@@ -843,6 +821,63 @@ function Matches() {
               )}
             </div>
           </div>
+
+          <div style={flashRowStyle} className="matches-flash-row">
+            <div style={flashDateColStyle} className="matches-date-col">
+              <div style={flashDateStyle}>{match.match_date || "-"}</div>
+              <div style={flashTimeStyle}>{match.match_time || "-"}</div>
+            </div>
+
+            <div style={flashTeamsWrapStyle}>
+              <div style={flashMetaLineStyle}>
+                <span style={flashFieldLineStyle}>
+                  <MapPin size={13} />
+                  {match.field || "No field"}
+                </span>
+              </div>
+
+              <div style={teamsColumnStyle}>
+                <div style={teamRowAlignedStyle}>
+                  <div style={teamInfoStyle}>
+                    {renderTeamLogo(match.team_a_id)}
+                    <span style={teamNameTextStyle} className="matches-team-name">
+                      {getTeamName(match.team_a_id)}
+                    </span>
+                  </div>
+
+                  <span style={scoreInlineStyle} className="matches-score">
+                    {teamAScore}
+                    {showPenalties && ` (${teamAPenalties})`}
+                  </span>
+                </div>
+
+                <div style={teamRowAlignedStyle}>
+                  <div style={teamInfoStyle}>
+                    {renderTeamLogo(match.team_b_id)}
+                    <span style={teamNameTextStyle} className="matches-team-name">
+                      {getTeamName(match.team_b_id)}
+                    </span>
+                  </div>
+
+                  <span style={scoreInlineStyle} className="matches-score">
+                    {teamBScore}
+                    {showPenalties && ` (${teamBPenalties})`}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {match.man_of_the_match_player_id && (
+            <div style={motmChipStyle} className="matches-motm-chip">
+              <span style={motmChipIconStyle}>
+                <Trophy size={13} />
+              </span>
+              <span style={motmChipTextStyle} className="matches-motm-text">
+                MOTM: {motmText}
+              </span>
+            </div>
+          )}
         </div>
 
         {editingTimeMatchId === match.id && canManageMatches && (
@@ -1004,15 +1039,35 @@ function Matches() {
             }
 
             .matches-card-body {
-              gap: 14px !important;
+              gap: 12px !important;
             }
 
             .matches-top-meta {
               justify-content: flex-start !important;
             }
 
+            .matches-status-actions {
+              align-items: center !important;
+            }
+
+            .matches-flash-row {
+              grid-template-columns: 1fr !important;
+              gap: 12px !important;
+            }
+
+            .matches-date-col {
+              width: 100% !important;
+              border-right: none !important;
+              border-bottom: 1px solid #e5e7eb !important;
+              padding-right: 0 !important;
+              padding-bottom: 10px !important;
+              min-width: 100% !important;
+              text-align: left !important;
+            }
+
             .matches-score {
-              font-size: 24px !important;
+              font-size: 18px !important;
+              min-width: 24px !important;
             }
 
             .matches-team-name {
@@ -1046,6 +1101,10 @@ function Matches() {
               right: 0 !important;
               left: auto !important;
               min-width: 160px !important;
+            }
+
+            .matches-filter-row {
+              flex-wrap: wrap !important;
             }
           }
         `}
@@ -1260,8 +1319,24 @@ function Matches() {
             </>
           )}
 
+          <div style={filterBarStyle} className="matches-filter-row">
+            {filterOptions.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => setStatusFilter(option.key)}
+                style={{
+                  ...filterButtonStyle,
+                  ...(statusFilter === option.key ? activeFilterButtonStyle : {}),
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
           {filteredMatches.length === 0 ? (
-            <div style={emptyStateStyle}>No matches yet.</div>
+            <div style={emptyStateStyle}>No matches found for this filter.</div>
           ) : (
             <div style={{ display: "grid", gap: "24px" }}>
               {orderedStageKeys.map((stageKey) => {
@@ -1376,7 +1451,7 @@ const formCardStyle = {
   padding: "20px",
   borderRadius: "18px",
   border: "1px solid #e5e7eb",
-  marginBottom: "28px",
+  marginBottom: "20px",
   boxShadow: "0 4px 16px rgba(0,0,0,0.04)",
 };
 
@@ -1467,6 +1542,28 @@ const submitButtonStyle = {
   cursor: "pointer",
 };
 
+const filterBarStyle = {
+  display: "flex",
+  gap: "10px",
+  flexWrap: "wrap",
+  marginBottom: "20px",
+};
+
+const filterButtonStyle = {
+  background: "#e5e7eb",
+  color: "#4b5563",
+  border: "none",
+  padding: "10px 14px",
+  borderRadius: "999px",
+  fontWeight: "700",
+  cursor: "pointer",
+};
+
+const activeFilterButtonStyle = {
+  background: "#ff1455",
+  color: "#fff",
+};
+
 const stageHeaderStyle = {
   background: "#e5e7eb",
   borderRadius: "10px",
@@ -1530,30 +1627,89 @@ const matchMetaBadgeStyle = {
 };
 
 const matchCardBodyStyle = {
-  padding: "16px",
+  padding: "14px 16px 16px",
   display: "grid",
+  gap: "12px",
+};
+
+const statusActionRowStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "12px",
+};
+
+const flashRowStyle = {
+  display: "grid",
+  gridTemplateColumns: "120px 1fr",
   gap: "16px",
+  alignItems: "stretch",
+};
+
+const flashDateColStyle = {
+  minWidth: "120px",
+  borderRight: "1px solid #e5e7eb",
+  paddingRight: "14px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "6px",
+  justifyContent: "center",
+};
+
+const flashDateStyle = {
+  fontSize: "14px",
+  fontWeight: "800",
+  color: "#111827",
+};
+
+const flashTimeStyle = {
+  fontSize: "15px",
+  fontWeight: "900",
+  color: "#111827",
+};
+
+const flashTeamsWrapStyle = {
+  display: "grid",
+  gap: "10px",
+  minWidth: 0,
+};
+
+const flashMetaLineStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "10px",
+  flexWrap: "wrap",
+};
+
+const flashFieldLineStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  color: "#6b7280",
+  fontSize: "13px",
+  fontWeight: "600",
 };
 
 const statusPillStyle = {
   width: "fit-content",
-  padding: "9px 12px",
+  padding: "8px 12px",
   borderRadius: "999px",
   fontWeight: "800",
-  fontSize: "13px",
+  fontSize: "12px",
 };
 
 const teamsColumnStyle = {
   display: "grid",
-  gap: "12px",
+  gap: "10px",
 };
 
 const teamRowAlignedStyle = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  gap: "16px",
-  padding: "4px 0",
+  gap: "12px",
+  padding: "2px 0",
 };
 
 const teamInfoStyle = {
@@ -1564,17 +1720,17 @@ const teamInfoStyle = {
 };
 
 const teamNameTextStyle = {
-  fontSize: "17px",
+  fontSize: "16px",
   fontWeight: "700",
   color: "#111827",
 };
 
 const scoreInlineStyle = {
-  fontSize: "30px",
+  fontSize: "18px",
   fontWeight: "900",
   color: "#111827",
   lineHeight: 1,
-  minWidth: "28px",
+  minWidth: "32px",
   textAlign: "right",
 };
 
@@ -1606,10 +1762,10 @@ const teamLogoMiniFallbackStyle = {
 const motmChipStyle = {
   display: "inline-flex",
   alignItems: "center",
-  gap: "10px",
+  gap: "8px",
   width: "fit-content",
   maxWidth: "100%",
-  padding: "8px 12px",
+  padding: "7px 11px",
   borderRadius: "999px",
   background: "rgba(245,158,11,0.10)",
   border: "1px solid rgba(245,158,11,0.22)",
@@ -1643,8 +1799,8 @@ const matchFooterStyle = {
 };
 
 const menuButtonStyle = {
-  width: "42px",
-  height: "42px",
+  width: "38px",
+  height: "38px",
   borderRadius: "10px",
   border: "1px solid #e5e7eb",
   background: "#fff",
@@ -1653,6 +1809,7 @@ const menuButtonStyle = {
   alignItems: "center",
   justifyContent: "center",
   cursor: "pointer",
+  flexShrink: 0,
 };
 
 const dropdownMenuStyle = {

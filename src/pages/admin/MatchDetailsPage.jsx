@@ -687,8 +687,23 @@ function MatchDetailsPage() {
       return;
     }
 
-    const winnerTeamId =
-      teamAScore > teamBScore ? match.team_a_id : match.team_b_id;
+    let winnerTeamId = null;
+
+    if (match.stage === "group") {
+      if (teamAScore > teamBScore) {
+        winnerTeamId = match.team_a_id;
+      } else if (teamBScore > teamAScore) {
+        winnerTeamId = match.team_b_id;
+      } else {
+        winnerTeamId = null;
+      }
+    } else {
+      if (teamAScore > teamBScore) {
+        winnerTeamId = match.team_a_id;
+      } else if (teamBScore > teamAScore) {
+        winnerTeamId = match.team_b_id;
+      }
+    }
 
     const { error } = await supabase
       .from("matches")
@@ -799,8 +814,23 @@ function MatchDetailsPage() {
             return;
           }
 
-          const winnerTeamId =
-            teamAScore > teamBScore ? match.team_a_id : match.team_b_id;
+          let winnerTeamId = null;
+
+          if (match.stage === "group") {
+            if (teamAScore > teamBScore) {
+              winnerTeamId = match.team_a_id;
+            } else if (teamBScore > teamAScore) {
+              winnerTeamId = match.team_b_id;
+            } else {
+              winnerTeamId = null;
+            }
+          } else {
+            if (teamAScore > teamBScore) {
+              winnerTeamId = match.team_a_id;
+            } else if (teamBScore > teamAScore) {
+              winnerTeamId = match.team_b_id;
+            }
+          }
 
           const { error } = await supabase
             .from("matches")
@@ -1244,8 +1274,8 @@ function MatchDetailsPage() {
     return (
       <div
         style={{
-          width: large ? "96px" : "36px",
-          height: large ? "96px" : "36px",
+          width: large ? "clamp(50px, 14vw, 80px)" : "32px",
+          height: large ? "clamp(50px, 14vw, 80px)" : "32px",
           borderRadius: large ? "20px" : "50%",
           border: "1px solid #e5e7eb",
           background: "#f9fafb",
@@ -1454,23 +1484,26 @@ function MatchDetailsPage() {
             }
 
             .match-summary-card {
-              padding: 18px !important;
+              padding: 14px !important;
               border-radius: 18px !important;
             }
 
             .match-summary-top {
               text-align: center !important;
-              font-size: 14px !important;
+              font-size: 12px !important;
+              margin-bottom: 14px !important;
+              line-height: 1.4 !important;
             }
 
             .match-scoreboard {
               grid-template-columns: 1fr auto 1fr !important;
               align-items: center !important;
-              gap: 10px !important;
+              gap: 8px !important;
             }
 
             .match-team-column {
               text-align: center !important;
+              gap: 8px !important;
             }
 
             .match-center-score {
@@ -1478,20 +1511,24 @@ function MatchDetailsPage() {
             }
 
             .match-team-name {
-              font-size: 18px !important;
+              font-size: 14px !important;
               line-height: 1.2 !important;
+              word-break: break-word !important;
             }
 
             .match-big-score {
-              font-size: 38px !important;
+              font-size: 34px !important;
+              letter-spacing: 0 !important;
             }
 
             .match-phase {
-              font-size: 16px !important;
+              font-size: 14px !important;
+              margin-top: 8px !important;
             }
 
             .match-clock {
-              font-size: 18px !important;
+              font-size: 16px !important;
+              margin-top: 4px !important;
             }
 
             .match-actions {
@@ -1539,6 +1576,8 @@ function MatchDetailsPage() {
             .match-motm-card {
               flex-direction: column !important;
               text-align: center !important;
+              gap: 10px !important;
+              padding: 10px !important;
             }
 
             .match-motm-content {
@@ -1936,7 +1975,7 @@ const summaryCardStyle = {
   background: "#ffffff",
   border: "1px solid #e5e7eb",
   borderRadius: "22px",
-  padding: "26px 30px",
+  padding: "18px 16px",
   marginBottom: "20px",
   boxShadow: "0 8px 24px rgba(0,0,0,0.06)",
 };
@@ -1966,7 +2005,7 @@ const teamColumnStyle = {
 };
 
 const teamNameBigStyle = {
-  fontSize: "28px",
+  fontSize: "clamp(14px, 4vw, 22px)",
   fontWeight: "700",
   color: "#111827",
   lineHeight: 1.2,
@@ -1976,11 +2015,11 @@ const teamNameBigStyle = {
 
 const scoreCenterStyle = {
   textAlign: "center",
-  minWidth: "220px",
+  minWidth: "120px",
 };
 
 const scoreBigStyle = {
-  fontSize: "86px",
+  fontSize: "clamp(32px, 8vw, 64px)",
   fontWeight: "800",
   lineHeight: 1,
   color: "#ff1455",
@@ -1989,14 +2028,14 @@ const scoreBigStyle = {
 
 const phaseStyle = {
   marginTop: "14px",
-  fontSize: "28px",
+  fontSize: "clamp(14px, 4vw, 20px)",
   fontWeight: "800",
   textTransform: "uppercase",
 };
 
 const clockStyle = {
   marginTop: "6px",
-  fontSize: "30px",
+  fontSize: "clamp(14px, 4vw, 22px)",
   fontWeight: "700",
   color: "#111827",
 };
@@ -2068,7 +2107,7 @@ const motmCardStyle = {
   alignItems: "center",
   justifyContent: "center",
   gap: "14px",
-  padding: "14px",
+  padding: "10px",
   borderRadius: "16px",
   background: "rgba(245,158,11,0.10)",
   border: "1px solid rgba(245,158,11,0.22)",
@@ -2077,9 +2116,9 @@ const motmCardStyle = {
 };
 
 const motmAvatarWrapStyle = {
-  width: "64px",
-  height: "64px",
-  minWidth: "64px",
+  width: "50px",
+  height: "50px",
+  minWidth: "50px",
   borderRadius: "50%",
   background: "#fff",
   border: "1px solid rgba(245,158,11,0.22)",

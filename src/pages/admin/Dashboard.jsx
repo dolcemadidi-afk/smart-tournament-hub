@@ -127,15 +127,20 @@ function Dashboard() {
     companyLogos.length > 0 ? [...companyLogos, ...companyLogos] : [];
 
   const recentMatches = useMemo(() => {
-    return [...matches]
+    return matches
+      .filter((match) => match.status === "finished")
       .sort((a, b) => {
-        const aDate = new Date(
-          `${a.match_date || "1970-01-01"}T${a.match_time || "00:00"}`
+        const aTime = new Date(
+          a.finished_at ||
+            `${a.match_date || "1970-01-01"}T${a.match_time || "00:00"}`
         ).getTime();
-        const bDate = new Date(
-          `${b.match_date || "1970-01-01"}T${b.match_time || "00:00"}`
+
+        const bTime = new Date(
+          b.finished_at ||
+            `${b.match_date || "1970-01-01"}T${b.match_time || "00:00"}`
         ).getTime();
-        return bDate - aDate;
+
+        return bTime - aTime;
       })
       .slice(0, 5);
   }, [matches]);
@@ -523,16 +528,16 @@ function Dashboard() {
                   <CalendarDays size={18} />
                 </div>
                 <div>
-                  <div style={sectionTitleStyle}>5 Recent Matches</div>
+                  <div style={sectionTitleStyle}>Recent Finished Matches</div>
                   <div style={sectionSubtitleStyle}>
-                    Latest updated matches from your platform
+                    Latest finished matches from your platform
                   </div>
                 </div>
               </div>
             </div>
 
             {recentMatches.length === 0 ? (
-              <p style={emptyTextStyle}>No matches yet.</p>
+              <p style={emptyTextStyle}>No finished matches yet.</p>
             ) : (
               <div style={{ display: "grid", gap: "14px" }}>
                 {recentMatches.map((match) => {
@@ -541,6 +546,9 @@ function Dashboard() {
                     "semifinal",
                     "final",
                     "third_place",
+                    "round_of_16",
+                    "round_of_32",
+                    "round_of_64",
                   ].includes(match.stage);
 
                   const isDraw =

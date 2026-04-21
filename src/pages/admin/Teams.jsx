@@ -372,7 +372,6 @@ function Teams() {
 
     const payload = {
       tournament_id: tournamentId,
-      team_name: companyName,
       company_name: companyName,
       manager_name: managerName,
       manager_email: managerEmail,
@@ -464,7 +463,7 @@ function Teams() {
         email: inviteEmail,
         manager_name: inviteManagerName,
         manager_phone: inviteManagerPhone || null,
-        team_name: inviteCompanyName,
+        company_name: inviteCompanyName,
         logo_url: inviteLogoUrl,
         invited_by: selectedTournament?.organizer_id || null,
         invite_token: inviteToken,
@@ -501,7 +500,7 @@ ${inviteLink}`);
   const handleEdit = (team) => {
     setEditingTeamId(team.id);
     setTournamentId(team.tournament_id || "");
-    setCompanyName(team.company_name || team.team_name || "");
+    setCompanyName(team.company_name || "");
     setManagerName(team.manager_name || "");
     setManagerEmail(team.manager_email || "");
     setManagerPhone(team.manager_phone || "");
@@ -1140,9 +1139,7 @@ ${inviteLink}`);
               ) : (
                 <div style={{ display: "grid", gap: "12px" }}>
                   {filteredTeams.map((team) => {
-                    const displayName =
-                      team.company_name || team.team_name || "-";
-
+                    const displayName = team.company_name || "-";
                     const capacity = getTournamentCapacity(team.tournament_id);
                     const playersCount = playerCountsByTeam[String(team.id)] || 0;
 

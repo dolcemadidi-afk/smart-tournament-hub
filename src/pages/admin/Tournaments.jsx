@@ -14,6 +14,33 @@ import {
   Users,
 } from "lucide-react";
 
+const TOURNAMENT_SCHEDULE_DRAFT_KEY = "tournament_schedule_draft_v1";
+
+const saveScheduleDraft = (draft) => {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    TOURNAMENT_SCHEDULE_DRAFT_KEY,
+    JSON.stringify(draft)
+  );
+};
+
+const loadScheduleDraft = () => {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(TOURNAMENT_SCHEDULE_DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    console.error("Error loading schedule draft:", error);
+    return null;
+  }
+};
+
+const clearScheduleDraft = () => {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(TOURNAMENT_SCHEDULE_DRAFT_KEY);
+};
+
 function Tournaments() {
   const [editingTournamentId, setEditingTournamentId] = useState(null);
 
@@ -68,6 +95,7 @@ function Tournaments() {
 
   const [tournaments, setTournaments] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [activeScheduleTournamentId, setActiveScheduleTournamentId] = useState("");
 
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [openSections, setOpenSections] = useState({
@@ -99,6 +127,78 @@ function Tournaments() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  useEffect(() => {
+    const draft = loadScheduleDraft();
+    if (!draft) return;
+
+    setActiveScheduleTournamentId(draft.activeScheduleTournamentId || "");
+    setRound1Date(draft.round1Date || "");
+    setRound2Date(draft.round2Date || "");
+    setRound3Date(draft.round3Date || "");
+    setQuarterfinalDate(draft.quarterfinalDate || "");
+    setSemifinalDate(draft.semifinalDate || "");
+    setFinalDate(draft.finalDate || "");
+    setThirdPlaceDate(draft.thirdPlaceDate || "");
+
+    if (Array.isArray(draft.round1Slots) && draft.round1Slots.length > 0) {
+      setRound1Slots(draft.round1Slots);
+    }
+    if (Array.isArray(draft.round2Slots) && draft.round2Slots.length > 0) {
+      setRound2Slots(draft.round2Slots);
+    }
+    if (Array.isArray(draft.round3Slots) && draft.round3Slots.length > 0) {
+      setRound3Slots(draft.round3Slots);
+    }
+    if (Array.isArray(draft.quarterfinalSlots) && draft.quarterfinalSlots.length > 0) {
+      setQuarterfinalSlots(draft.quarterfinalSlots);
+    }
+    if (Array.isArray(draft.semifinalSlots) && draft.semifinalSlots.length > 0) {
+      setSemifinalSlots(draft.semifinalSlots);
+    }
+    if (draft.finalSlot) {
+      setFinalSlot(draft.finalSlot);
+    }
+    if (draft.thirdPlaceSlot) {
+      setThirdPlaceSlot(draft.thirdPlaceSlot);
+    }
+  }, []);
+
+  useEffect(() => {
+    saveScheduleDraft({
+      activeScheduleTournamentId,
+      round1Date,
+      round2Date,
+      round3Date,
+      quarterfinalDate,
+      semifinalDate,
+      finalDate,
+      thirdPlaceDate,
+      round1Slots,
+      round2Slots,
+      round3Slots,
+      quarterfinalSlots,
+      semifinalSlots,
+      finalSlot,
+      thirdPlaceSlot,
+    });
+  }, [
+    activeScheduleTournamentId,
+    round1Date,
+    round2Date,
+    round3Date,
+    quarterfinalDate,
+    semifinalDate,
+    finalDate,
+    thirdPlaceDate,
+    round1Slots,
+    round2Slots,
+    round3Slots,
+    quarterfinalSlots,
+    semifinalSlots,
+    finalSlot,
+    thirdPlaceSlot,
+  ]);
+
   const toggleSection = (key) => {
     if (!isMobile) return;
     setOpenSections((prev) => ({
@@ -115,6 +215,407 @@ function Tournaments() {
   };
 
   const today = getTodayLocal();
+
+
+  const PREFERRED_TEAMS_PER_GROUP = 4;
+
+  const createEmptySlots = (count) =>
+    Array.from({ length: count }, () => ({ time: "", field: "" }));
+
+  const resizeSlots = (slots, nextLength) => {
+    const safeLength = Math.max(1, Number(nextLength) || 1);
+    return Array.from({ length: safeLength }, (_, index) => slots[index] || { time: "", field: "" });
+  };
+
+  const getGroupLabel = (index) => {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let label = "";
+    let current = index;
+
+    do {
+      label = alphabet[current % 26] + label;
+      current = Math.floor(current / 26) - 1;
+    } while (current >= 0);
+
+    return label;
+  };
+
+  const buildBalancedGroupSizes = (teamCount, preferredSize = PREFERRED_TEAMS_PER_GROUP) => {
+    const safeTeamCount = Number(teamCount) || 0;
+    if (safeTeamCount <= 0) return [];
+
+    const totalGroups = Math.ceil(safeTeamCount / preferredSize);
+    const baseSize = Math.floor(safeTeamCount / totalGroups);
+    const remainder = safeTeamCount % totalGroups;
+
+    return Array.from({ length: totalGroups }, (_, index) =>
+      baseSize + (index < remainder ? 1 : 0)
+    );
+  };
+
+  const distributeTeamsIntoBalancedGroups = (teams, preferredSize = PREFERRED_TEAMS_PER_GROUP) => {
+    const sizes = buildBalancedGroupSizes(teams.length, preferredSize);
+    const groups = [];
+    let cursor = 0;
+
+    sizes.forEach((size) => {
+      groups.push(teams.slice(cursor, cursor + size));
+      cursor += size;
+    });
+
+    return groups;
+  };
+
+  const createRoundRobinRounds = (teams) => {
+    const teamList = [...teams];
+    if (teamList.length < 2) return [];
+
+    const hasBye = teamList.length % 2 !== 0;
+    const working = hasBye ? [...teamList, null] : [...teamList];
+    const rounds = [];
+    const totalRounds = working.length - 1;
+    const half = working.length / 2;
+
+    for (let roundIndex = 0; roundIndex < totalRounds; roundIndex += 1) {
+      const roundMatches = [];
+
+      for (let i = 0; i < half; i += 1) {
+        const home = working[i];
+        const away = working[working.length - 1 - i];
+
+        if (home && away) {
+          roundMatches.push({
+            teamA: roundIndex % 2 === 0 ? home : away,
+            teamB: roundIndex % 2 === 0 ? away : home,
+          });
+        }
+      }
+
+      rounds.push(roundMatches);
+
+      const fixed = working[0];
+      const rotating = working.slice(1);
+      rotating.unshift(rotating.pop());
+      working.splice(0, working.length, fixed, ...rotating);
+    }
+
+    return rounds;
+  };
+
+  const getRecommendedGroupStageSlotCount = (teamCount) => {
+    const sizes = buildBalancedGroupSizes(teamCount);
+    if (sizes.length === 0) return 8;
+
+    return Math.max(
+      8,
+      sizes.reduce((total, size) => total + Math.floor(size / 2), 0)
+    );
+  };
+
+  const isPowerOfTwo = (value) => {
+    const safeValue = Number(value) || 0;
+    return safeValue > 0 && (safeValue & (safeValue - 1)) === 0;
+  };
+
+  const getLargestPowerOfTwoAtMost = (value) => {
+    const safeValue = Number(value) || 0;
+    if (safeValue < 1) return 0;
+
+    let power = 1;
+    while (power * 2 <= safeValue) {
+      power *= 2;
+    }
+    return power;
+  };
+
+  const getKnockoutStageName = (qualifiedTeamCount) => {
+    const safeCount = Number(qualifiedTeamCount) || 0;
+
+    if (safeCount === 2) return "final";
+    if (safeCount === 4) return "semifinal";
+    if (safeCount === 8) return "quarterfinal";
+    if (safeCount === 16) return "round_of_16";
+    if (safeCount === 32) return "round_of_32";
+    if (safeCount === 64) return "round_of_64";
+
+    return `round_of_${safeCount}`;
+  };
+
+  const getStageTeamCount = (stageName) => {
+    if (!stageName) return 0;
+    if (stageName === "final") return 2;
+    if (stageName === "semifinal") return 4;
+    if (stageName === "quarterfinal") return 8;
+
+    const parsed = String(stageName).match(/^round_of_(\d+)$/);
+    return parsed ? Number(parsed[1]) : 0;
+  };
+
+  const rankGroupTable = (teamsMap) =>
+    Object.values(teamsMap || {}).sort((a, b) => {
+      if (b.pts !== a.pts) return b.pts - a.pts;
+      if (b.gd !== a.gd) return b.gd - a.gd;
+      if (b.gf !== a.gf) return b.gf - a.gf;
+      if (a.ga !== b.ga) return a.ga - b.ga;
+      return a.team_name.localeCompare(b.team_name);
+    });
+
+  const isValidKnockoutSize = (value) => {
+    const safeValue = Number(value) || 0;
+    return safeValue >= 2 && isPowerOfTwo(safeValue);
+  };
+
+  const getNextValidKnockoutSize = (value) => {
+    const safeValue = Math.max(2, Number(value) || 0);
+    let size = 2;
+
+    while (size < safeValue) {
+      size *= 2;
+    }
+
+    return size;
+  };
+
+  const selectBestThirdPlacedTeams = (rankedGroups, countNeeded) => {
+    if (!countNeeded || countNeeded < 1) return [];
+
+    const thirdPlacedTeams = rankedGroups
+      .map((group) => group[2])
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (b.pts !== a.pts) return b.pts - a.pts;
+        if (b.gd !== a.gd) return b.gd - a.gd;
+        if (b.gf !== a.gf) return b.gf - a.gf;
+        if (a.ga !== b.ga) return a.ga - b.ga;
+        return a.team_name.localeCompare(b.team_name);
+      })
+      .map((team, index) => ({
+        ...team,
+        seed_bucket: 3,
+        seed_order: index + 1,
+      }));
+
+    return thirdPlacedTeams.slice(0, countNeeded);
+  };
+
+  const buildGroupStandings = (teams, matches) => {
+    const groupsMap = {};
+
+    (teams || []).forEach((team) => {
+      const groupName = team.group_name;
+      if (!groupName) return;
+
+      if (!groupsMap[groupName]) {
+        groupsMap[groupName] = {};
+      }
+
+      groupsMap[groupName][team.id] = {
+        team_id: team.id,
+        team_name: team.company_name || team.team_name,
+        group_name: groupName,
+        mp: 0,
+        w: 0,
+        d: 0,
+        l: 0,
+        gf: 0,
+        ga: 0,
+        gd: 0,
+        pts: 0,
+      };
+    });
+
+    (matches || []).forEach((match) => {
+      if (match.status !== "finished") return;
+
+      const groupName = match.group_name;
+      if (!groupName || !groupsMap[groupName]) return;
+
+      const home = groupsMap[groupName][match.team_a_id];
+      const away = groupsMap[groupName][match.team_b_id];
+
+      if (!home || !away) return;
+
+      const homeGoals = Number(match.team_a_score || 0);
+      const awayGoals = Number(match.team_b_score || 0);
+
+      home.mp += 1;
+      away.mp += 1;
+
+      home.gf += homeGoals;
+      home.ga += awayGoals;
+      away.gf += awayGoals;
+      away.ga += homeGoals;
+
+      if (homeGoals > awayGoals) {
+        home.w += 1;
+        away.l += 1;
+        home.pts += 3;
+      } else if (homeGoals < awayGoals) {
+        away.w += 1;
+        home.l += 1;
+        away.pts += 3;
+      } else {
+        home.d += 1;
+        away.d += 1;
+        home.pts += 1;
+        away.pts += 1;
+      }
+    });
+
+    Object.keys(groupsMap).forEach((groupName) => {
+      Object.values(groupsMap[groupName]).forEach((team) => {
+        team.gd = team.gf - team.ga;
+      });
+    });
+
+    return groupsMap;
+  };
+
+  const buildSeededKnockoutTeams = (groupsMap) => {
+    const rankedGroupNames = Object.keys(groupsMap).sort((a, b) => a.localeCompare(b));
+    const rankedGroups = rankedGroupNames.map((groupName) =>
+      rankGroupTable(groupsMap[groupName])
+    );
+
+    if (rankedGroups.length < 2) {
+      return {
+        error: "At least 2 groups are required to generate a knockout stage.",
+      };
+    }
+
+    const winners = rankedGroups
+      .map((group) => group[0])
+      .filter(Boolean)
+      .map((team, index) => ({
+        ...team,
+        seed_bucket: 1,
+        seed_order: index + 1,
+      }));
+
+    const runnersUp = rankedGroups
+      .map((group) => group[1])
+      .filter(Boolean)
+      .map((team, index) => ({
+        ...team,
+        seed_bucket: 2,
+        seed_order: index + 1,
+      }));
+
+    const defaultQualifiers = [...winners, ...runnersUp];
+    const defaultQualifiedCount = defaultQualifiers.length;
+
+    if (defaultQualifiedCount < 2) {
+      return {
+        error: "Not enough qualified teams to build a knockout stage.",
+      };
+    }
+
+    let targetKnockoutSize = defaultQualifiedCount;
+
+    if (!isValidKnockoutSize(defaultQualifiedCount)) {
+      const requestedTarget = getNextValidKnockoutSize(defaultQualifiedCount);
+      const availableThirdPlacedCount = rankedGroups.filter((group) => Boolean(group[2])).length;
+      const neededThirdPlacedCount = requestedTarget - defaultQualifiedCount;
+
+      if (availableThirdPlacedCount < neededThirdPlacedCount) {
+        return {
+          error:
+            "Could not reach a valid knockout bracket size with the available 3rd-placed teams.",
+        };
+      }
+
+      targetKnockoutSize = requestedTarget;
+    }
+
+    const neededBestThirdPlacedCount = Math.max(0, targetKnockoutSize - defaultQualifiedCount);
+    const bestThirdPlacedTeams = selectBestThirdPlacedTeams(
+      rankedGroups,
+      neededBestThirdPlacedCount
+    );
+
+    if (bestThirdPlacedTeams.length !== neededBestThirdPlacedCount) {
+      return {
+        error: "Could not select enough 3rd-placed teams to complete the knockout bracket.",
+      };
+    }
+
+    const qualifiers = [...defaultQualifiers, ...bestThirdPlacedTeams].sort((a, b) => {
+      if (a.seed_bucket !== b.seed_bucket) return a.seed_bucket - b.seed_bucket;
+      return a.seed_order - b.seed_order;
+    });
+
+    return {
+      rankedGroupNames,
+      rankedGroups,
+      qualifiers,
+      knockoutSize: qualifiers.length,
+      defaultQualifiedCount,
+      addedThirdPlacedCount: bestThirdPlacedTeams.length,
+      bestThirdPlacedTeams,
+    };
+  };
+
+  const createSeededBracketPairings = (seededTeams) => {
+    const remaining = [...seededTeams];
+    const pairings = [];
+
+    while (remaining.length > 1) {
+      const teamA = remaining.shift();
+
+      let opponentIndex = remaining.length - 1;
+      while (
+        opponentIndex > 0 &&
+        remaining[opponentIndex]?.group_name === teamA?.group_name
+      ) {
+        opponentIndex -= 1;
+      }
+
+      const [teamB] = remaining.splice(opponentIndex, 1);
+
+      if (teamA && teamB) {
+        pairings.push({ teamA, teamB });
+      }
+    }
+
+    return pairings;
+  };
+
+  const getExistingKnockoutMatches = async (tournamentId) => {
+    const { data, error } = await supabase
+      .from("matches")
+      .select("*")
+      .eq("tournament_id", tournamentId)
+      .not("stage", "eq", "group")
+      .order("created_at", { ascending: true });
+
+    return { data: data || [], error };
+  };
+
+  const getLatestPlayableKnockoutStage = (matches) => {
+    const stageNames = [...new Set(
+      (matches || [])
+        .map((match) => match.stage)
+        .filter((stage) => stage && stage !== "final" && stage !== "third_place")
+    )];
+
+    if (stageNames.length === 0) return null;
+
+    return stageNames.sort((a, b) => getStageTeamCount(b) - getStageTeamCount(a))[0];
+  };
+
+
+
+
+  useEffect(() => {
+    const teamCount = Number(maxTeams);
+    if (!teamCount || teamCount < 1) return;
+
+    const recommendedSlots = getRecommendedGroupStageSlotCount(teamCount);
+
+    setRound1Slots((prev) => resizeSlots(prev, recommendedSlots));
+    setRound2Slots((prev) => resizeSlots(prev, recommendedSlots));
+    setRound3Slots((prev) => resizeSlots(prev, recommendedSlots));
+  }, [maxTeams]);
 
   const fetchTournaments = async () => {
     const { data, error } = await supabase
@@ -135,6 +636,9 @@ function Tournaments() {
   }, []);
 
   const resetSlots = () => {
+    setActiveScheduleTournamentId("");
+    clearScheduleDraft();
+
     setRound1Date("");
     setRound2Date("");
     setRound3Date("");
@@ -143,15 +647,13 @@ function Tournaments() {
     setFinalDate("");
     setThirdPlaceDate("");
 
-    setRound1Slots(Array.from({ length: 8 }, () => ({ time: "", field: "" })));
-    setRound2Slots(Array.from({ length: 8 }, () => ({ time: "", field: "" })));
-    setRound3Slots(Array.from({ length: 8 }, () => ({ time: "", field: "" })));
-    setQuarterfinalSlots(
-      Array.from({ length: 4 }, () => ({ time: "", field: "" }))
-    );
-    setSemifinalSlots(
-      Array.from({ length: 2 }, () => ({ time: "", field: "" }))
-    );
+    const recommendedSlots = getRecommendedGroupStageSlotCount(Number(maxTeams) || 0);
+
+    setRound1Slots(createEmptySlots(recommendedSlots));
+    setRound2Slots(createEmptySlots(recommendedSlots));
+    setRound3Slots(createEmptySlots(recommendedSlots));
+    setQuarterfinalSlots(createEmptySlots(4));
+    setSemifinalSlots(createEmptySlots(2));
 
     setFinalSlot({ time: "", field: "" });
     setThirdPlaceSlot({ time: "", field: "" });
@@ -408,6 +910,203 @@ function Tournaments() {
     return arr;
   };
 
+  const getAssignedGroupsData = (teams) => {
+    const grouped = (teams || []).reduce((acc, team) => {
+      const groupName = (team.group_name || "").trim();
+      if (!groupName) return acc;
+      if (!acc[groupName]) acc[groupName] = [];
+      acc[groupName].push(team);
+      return acc;
+    }, {});
+
+    const orderedGroupNames = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
+    const groupEntries = orderedGroupNames.map((groupName) => ({
+      groupName,
+      teams: grouped[groupName],
+    }));
+
+    return {
+      orderedGroupNames,
+      groupEntries,
+    };
+  };
+
+  const buildGroupStagePlanFromAssignedGroups = (teams) => {
+    const { groupEntries } = getAssignedGroupsData(teams);
+
+    if (groupEntries.length === 0) {
+      return { error: "No groups found. Generate random groups first from the Standings page." };
+    }
+
+    if (groupEntries.some((entry) => entry.teams.length < 2)) {
+      return { error: "Each group must contain at least 2 teams before generating matches." };
+    }
+
+    const groupedRoundMatches = [];
+
+    groupEntries.forEach((entry) => {
+      const rounds = createRoundRobinRounds(entry.teams);
+
+      rounds.forEach((roundMatches, roundIndex) => {
+        if (!groupedRoundMatches[roundIndex]) {
+          groupedRoundMatches[roundIndex] = [];
+        }
+
+        groupedRoundMatches[roundIndex].push(
+          ...roundMatches.map((pairing) => ({
+            ...pairing,
+            groupName: entry.groupName,
+          }))
+        );
+      });
+    });
+
+    const requiredSlotsPerBucket = [0, 0, 0];
+    groupedRoundMatches.forEach((roundMatches, roundIndex) => {
+      const bucketIndex = Math.min(roundIndex, 2);
+      requiredSlotsPerBucket[bucketIndex] += roundMatches.length;
+    });
+
+    return {
+      groupEntries,
+      groupedRoundMatches,
+      requiredSlotsPerBucket,
+    };
+  };
+
+  const ensureGroupStageSlotCapacity = (requiredSlotsPerBucket) => {
+    let changed = false;
+
+    setRound1Slots((prev) => {
+      const next = resizeSlots(prev, requiredSlotsPerBucket[0] || 1);
+      if (next.length !== prev.length) changed = true;
+      return next;
+    });
+
+    setRound2Slots((prev) => {
+      const next = resizeSlots(prev, requiredSlotsPerBucket[1] || 1);
+      if (next.length !== prev.length) changed = true;
+      return next;
+    });
+
+    setRound3Slots((prev) => {
+      const next = resizeSlots(prev, requiredSlotsPerBucket[2] || 1);
+      if (next.length !== prev.length) changed = true;
+      return next;
+    });
+
+    return changed;
+  };
+
+  const getCurrentGroupStageBuckets = () => [
+    { date: round1Date, slots: round1Slots },
+    { date: round2Date, slots: round2Slots },
+    { date: round3Date, slots: round3Slots },
+  ];
+
+  const getGroupStageScheduleIssues = (requiredSlotsPerBucket) => {
+    const buckets = getCurrentGroupStageBuckets();
+    const issues = [];
+
+    buckets.forEach((bucket, index) => {
+      const needed = requiredSlotsPerBucket[index] || 0;
+      if (needed === 0) return;
+
+      if (!bucket.date) {
+        issues.push(`Round ${index + 1} date is required.`);
+      } else if (bucket.date < today) {
+        issues.push(`Round ${index + 1} date cannot be in the past.`);
+      }
+
+      for (let slotIndex = 0; slotIndex < needed; slotIndex += 1) {
+        const slot = bucket.slots[slotIndex] || { time: "", field: "" };
+        if (!slot.time || !slot.field) {
+          issues.push(`Round ${index + 1} - Match ${slotIndex + 1} needs time and field.`);
+          break;
+        }
+      }
+    });
+
+    return issues;
+  };
+
+  const buildGroupStageMatchesPayload = ({ tournamentId, groupedRoundMatches }) => {
+    const roundBuckets = getCurrentGroupStageBuckets();
+    const slotIndexes = [0, 0, 0];
+    const matchesToInsert = [];
+
+    groupedRoundMatches.forEach((roundMatches, roundIndex) => {
+      const bucketIndex = Math.min(roundIndex, 2);
+      const selectedBucket = roundBuckets[bucketIndex];
+
+      roundMatches.forEach((pairing) => {
+        const slot = selectedBucket.slots[slotIndexes[bucketIndex]] || {
+          time: "",
+          field: "",
+        };
+        slotIndexes[bucketIndex] += 1;
+
+        matchesToInsert.push({
+          tournament_id: tournamentId,
+          team_a_id: pairing.teamA.id,
+          team_b_id: pairing.teamB.id,
+          match_date: selectedBucket.date,
+          match_time: slot.time || null,
+          field: slot.field || null,
+          status: "scheduled",
+          elapsed_seconds: 0,
+          team_a_score: 0,
+          team_b_score: 0,
+          first_half_minutes: Number(matchConfig.firstHalfMinutes),
+          second_half_minutes: Number(matchConfig.secondHalfMinutes),
+          break_minutes: Number(matchConfig.breakMinutes),
+          stage: "group",
+          group_name: pairing.groupName,
+          round_number: roundIndex + 1,
+          winner_team_id: null,
+          source_match_1: null,
+          source_match_2: null,
+        });
+      });
+    });
+
+    return matchesToInsert;
+  };
+
+  const prepareGroupStageSchedule = async (tournamentId) => {
+    const { data: tournamentTeams, error: teamsError } = await supabase
+      .from("teams")
+      .select("*")
+      .eq("tournament_id", tournamentId)
+      .order("group_name", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    if (teamsError) {
+      console.error("Error fetching tournament teams:", teamsError.message);
+      alert(teamsError.message);
+      return null;
+    }
+
+    if (!tournamentTeams || tournamentTeams.length === 0) {
+      alert("No teams found for this tournament.");
+      return null;
+    }
+
+    const plan = buildGroupStagePlanFromAssignedGroups(tournamentTeams);
+    if (plan.error) {
+      alert(plan.error);
+      return null;
+    }
+
+    const slotCountsChanged = ensureGroupStageSlotCapacity(plan.requiredSlotsPerBucket);
+
+    return {
+      tournamentTeams,
+      ...plan,
+      slotCountsChanged,
+    };
+  };
+
   const validateMatchConfig = () => {
     if (
       !matchConfig.firstHalfMinutes ||
@@ -420,62 +1119,21 @@ function Tournaments() {
     return true;
   };
 
-  const handleGenerateGroupsAndMatches = async (tournamentId) => {
+  const handlePrepareGroupStageSchedule = async (tournamentId) => {
+    setActiveScheduleTournamentId(String(tournamentId));
+
+    const prepared = await prepareGroupStageSchedule(tournamentId);
+    if (!prepared) return;
+
+    alert(
+      `Group slots are ready. Round 1: ${prepared.requiredSlotsPerBucket[0]}, Round 2: ${prepared.requiredSlotsPerBucket[1]}, Round 3: ${prepared.requiredSlotsPerBucket[2]}. Fill date, time, and field, then click Generate Group Matches.`
+    );
+  };
+
+  const handleGenerateGroupMatches = async (tournamentId) => {
     if (!validateMatchConfig()) return;
 
-    if (!round1Date || !round2Date || !round3Date) {
-      alert("Please select Round 1, Round 2 and Round 3 dates first.");
-      return;
-    }
-
-    if (round1Date < today || round2Date < today || round3Date < today) {
-      alert("Group stage dates cannot be in the past.");
-      return;
-    }
-
-    const confirmGenerate = window.confirm(
-      "This will assign random groups and generate all group matches. Continue?"
-    );
-    if (!confirmGenerate) return;
-
-    const { data: tournamentTeams, error: teamsError } = await supabase
-      .from("teams")
-      .select("*")
-      .eq("tournament_id", tournamentId)
-      .order("created_at", { ascending: true });
-
-    if (teamsError) {
-      console.error("Error fetching tournament teams:", teamsError.message);
-      alert(teamsError.message);
-      return;
-    }
-
-    if (!tournamentTeams || tournamentTeams.length === 0) {
-      alert("No teams found for this tournament.");
-      return;
-    }
-
-    if (tournamentTeams.length % 4 !== 0) {
-      alert("Number of teams must be divisible by 4.");
-      return;
-    }
-
-    const totalGroups = tournamentTeams.length / 4;
-
-    if (round1Slots.length < totalGroups * 2) {
-      alert("Round 1 needs enough slots for all matches.");
-      return;
-    }
-
-    if (round2Slots.length < totalGroups * 2) {
-      alert("Round 2 needs enough slots for all matches.");
-      return;
-    }
-
-    if (round3Slots.length < totalGroups * 2) {
-      alert("Round 3 needs enough slots for all matches.");
-      return;
-    }
+    setActiveScheduleTournamentId(String(tournamentId));
 
     const { data: existingMatches, error: existingMatchesError } = await supabase
       .from("matches")
@@ -493,185 +1151,32 @@ function Tournaments() {
     }
 
     if (existingMatches && existingMatches.length > 0) {
-      alert("Group matches already exist for this tournament.");
+      alert("Group matches already exist for this tournament. Use Update Group Schedule if you changed date, time, or field.");
       return;
     }
 
-    const shuffledTeams = shuffleArray(tournamentTeams);
-    const groupLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-    const groupedTeams = [];
+    const prepared = await prepareGroupStageSchedule(tournamentId);
+    if (!prepared) return;
 
-    for (let i = 0; i < shuffledTeams.length; i += 4) {
-      groupedTeams.push(shuffledTeams.slice(i, i + 4));
+    if (prepared.slotCountsChanged) {
+      alert("The required group slots were loaded automatically. Fill the missing date, time, and field values, then click Generate Group Matches again.");
+      return;
     }
 
-    for (let i = 0; i < groupedTeams.length; i += 1) {
-      const groupName = groupLetters[i];
-      const group = groupedTeams[i];
-
-      for (const team of group) {
-        const { error: updateTeamError } = await supabase
-          .from("teams")
-          .update({ group_name: groupName })
-          .eq("id", team.id);
-
-        if (updateTeamError) {
-          console.error("Error updating team group:", updateTeamError.message);
-          alert(updateTeamError.message);
-          return;
-        }
-      }
+    const scheduleIssues = getGroupStageScheduleIssues(prepared.requiredSlotsPerBucket);
+    if (scheduleIssues.length > 0) {
+      alert(scheduleIssues[0]);
+      return;
     }
 
-    const matchesToInsert = [];
-    let round1SlotIndex = 0;
-    let round2SlotIndex = 0;
-    let round3SlotIndex = 0;
+    const confirmGenerate = window.confirm(
+      "This will generate all group matches using the groups already assigned in Standings. Continue?"
+    );
+    if (!confirmGenerate) return;
 
-    groupedTeams.forEach((group, index) => {
-      const groupName = groupLetters[index];
-      if (group.length !== 4) return;
-
-      const t1 = group[0];
-      const t2 = group[1];
-      const t3 = group[2];
-      const t4 = group[3];
-
-      const r1slot1 = round1Slots[round1SlotIndex++] || { time: "", field: "" };
-      const r1slot2 = round1Slots[round1SlotIndex++] || { time: "", field: "" };
-      const r2slot1 = round2Slots[round2SlotIndex++] || { time: "", field: "" };
-      const r2slot2 = round2Slots[round2SlotIndex++] || { time: "", field: "" };
-      const r3slot1 = round3Slots[round3SlotIndex++] || { time: "", field: "" };
-      const r3slot2 = round3Slots[round3SlotIndex++] || { time: "", field: "" };
-
-      matchesToInsert.push(
-        {
-          tournament_id: tournamentId,
-          team_a_id: t1.id,
-          team_b_id: t4.id,
-          match_date: round1Date,
-          match_time: r1slot1.time || null,
-          field: r1slot1.field || null,
-          status: "scheduled",
-          elapsed_seconds: 0,
-          team_a_score: 0,
-          team_b_score: 0,
-          first_half_minutes: Number(matchConfig.firstHalfMinutes),
-          second_half_minutes: Number(matchConfig.secondHalfMinutes),
-          break_minutes: Number(matchConfig.breakMinutes),
-          stage: "group",
-          group_name: groupName,
-          round_number: 1,
-          winner_team_id: null,
-          source_match_1: null,
-          source_match_2: null,
-        },
-        {
-          tournament_id: tournamentId,
-          team_a_id: t2.id,
-          team_b_id: t3.id,
-          match_date: round1Date,
-          match_time: r1slot2.time || null,
-          field: r1slot2.field || null,
-          status: "scheduled",
-          elapsed_seconds: 0,
-          team_a_score: 0,
-          team_b_score: 0,
-          first_half_minutes: Number(matchConfig.firstHalfMinutes),
-          second_half_minutes: Number(matchConfig.secondHalfMinutes),
-          break_minutes: Number(matchConfig.breakMinutes),
-          stage: "group",
-          group_name: groupName,
-          round_number: 1,
-          winner_team_id: null,
-          source_match_1: null,
-          source_match_2: null,
-        },
-        {
-          tournament_id: tournamentId,
-          team_a_id: t1.id,
-          team_b_id: t3.id,
-          match_date: round2Date,
-          match_time: r2slot1.time || null,
-          field: r2slot1.field || null,
-          status: "scheduled",
-          elapsed_seconds: 0,
-          team_a_score: 0,
-          team_b_score: 0,
-          first_half_minutes: Number(matchConfig.firstHalfMinutes),
-          second_half_minutes: Number(matchConfig.secondHalfMinutes),
-          break_minutes: Number(matchConfig.breakMinutes),
-          stage: "group",
-          group_name: groupName,
-          round_number: 2,
-          winner_team_id: null,
-          source_match_1: null,
-          source_match_2: null,
-        },
-        {
-          tournament_id: tournamentId,
-          team_a_id: t2.id,
-          team_b_id: t4.id,
-          match_date: round2Date,
-          match_time: r2slot2.time || null,
-          field: r2slot2.field || null,
-          status: "scheduled",
-          elapsed_seconds: 0,
-          team_a_score: 0,
-          team_b_score: 0,
-          first_half_minutes: Number(matchConfig.firstHalfMinutes),
-          second_half_minutes: Number(matchConfig.secondHalfMinutes),
-          break_minutes: Number(matchConfig.breakMinutes),
-          stage: "group",
-          group_name: groupName,
-          round_number: 2,
-          winner_team_id: null,
-          source_match_1: null,
-          source_match_2: null,
-        },
-        {
-          tournament_id: tournamentId,
-          team_a_id: t1.id,
-          team_b_id: t2.id,
-          match_date: round3Date,
-          match_time: r3slot1.time || null,
-          field: r3slot1.field || null,
-          status: "scheduled",
-          elapsed_seconds: 0,
-          team_a_score: 0,
-          team_b_score: 0,
-          first_half_minutes: Number(matchConfig.firstHalfMinutes),
-          second_half_minutes: Number(matchConfig.secondHalfMinutes),
-          break_minutes: Number(matchConfig.breakMinutes),
-          stage: "group",
-          group_name: groupName,
-          round_number: 3,
-          winner_team_id: null,
-          source_match_1: null,
-          source_match_2: null,
-        },
-        {
-          tournament_id: tournamentId,
-          team_a_id: t3.id,
-          team_b_id: t4.id,
-          match_date: round3Date,
-          match_time: r3slot2.time || null,
-          field: r3slot2.field || null,
-          status: "scheduled",
-          elapsed_seconds: 0,
-          team_a_score: 0,
-          team_b_score: 0,
-          first_half_minutes: Number(matchConfig.firstHalfMinutes),
-          second_half_minutes: Number(matchConfig.secondHalfMinutes),
-          break_minutes: Number(matchConfig.breakMinutes),
-          stage: "group",
-          group_name: groupName,
-          round_number: 3,
-          winner_team_id: null,
-          source_match_1: null,
-          source_match_2: null,
-        }
-      );
+    const matchesToInsert = buildGroupStageMatchesPayload({
+      tournamentId,
+      groupedRoundMatches: prepared.groupedRoundMatches,
     });
 
     const { error: insertMatchesError } = await supabase
@@ -684,45 +1189,135 @@ function Tournaments() {
       return;
     }
 
-    alert("Groups and group matches generated successfully.");
+    clearScheduleDraft();
+    setActiveScheduleTournamentId("");
+
+    alert("Group matches generated successfully.");
+  };
+
+  const handleUpdateGroupMatchSchedule = async (tournamentId) => {
+    if (!validateMatchConfig()) return;
+
+    setActiveScheduleTournamentId(String(tournamentId));
+
+    const prepared = await prepareGroupStageSchedule(tournamentId);
+    if (!prepared) return;
+
+    const scheduleIssues = getGroupStageScheduleIssues(prepared.requiredSlotsPerBucket);
+    if (scheduleIssues.length > 0) {
+      alert(scheduleIssues[0]);
+      return;
+    }
+
+    const { data: existingMatches, error: existingMatchesError } = await supabase
+      .from("matches")
+      .select("*")
+      .eq("tournament_id", tournamentId)
+      .eq("stage", "group")
+      .order("round_number", { ascending: true })
+      .order("group_name", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    if (existingMatchesError) {
+      console.error("Error fetching existing group matches:", existingMatchesError.message);
+      alert(existingMatchesError.message);
+      return;
+    }
+
+    if (!existingMatches || existingMatches.length === 0) {
+      alert("No group matches exist yet. Generate group matches first.");
+      return;
+    }
+
+    const roundBuckets = getCurrentGroupStageBuckets();
+    const slotIndexes = [0, 0, 0];
+    const updates = [];
+
+    prepared.groupedRoundMatches.forEach((roundMatches, roundIndex) => {
+      const bucketIndex = Math.min(roundIndex, 2);
+      const selectedBucket = roundBuckets[bucketIndex];
+
+      roundMatches.forEach((pairing) => {
+        const slot = selectedBucket.slots[slotIndexes[bucketIndex]] || { time: "", field: "" };
+        slotIndexes[bucketIndex] += 1;
+
+        const matchRecord = existingMatches.find((match) => {
+          const sameTeams =
+            (String(match.team_a_id) === String(pairing.teamA.id) &&
+              String(match.team_b_id) === String(pairing.teamB.id)) ||
+            (String(match.team_a_id) === String(pairing.teamB.id) &&
+              String(match.team_b_id) === String(pairing.teamA.id));
+
+          return (
+            sameTeams &&
+            match.group_name === pairing.groupName &&
+            Number(match.round_number || 0) === roundIndex + 1
+          );
+        });
+
+        if (matchRecord) {
+          updates.push({
+            id: matchRecord.id,
+            match_date: selectedBucket.date,
+            match_time: slot.time || null,
+            field: slot.field || null,
+          });
+        }
+      });
+    });
+
+    for (const update of updates) {
+      const { error } = await supabase
+        .from("matches")
+        .update({
+          match_date: update.match_date,
+          match_time: update.match_time,
+          field: update.field,
+        })
+        .eq("id", update.id);
+
+      if (error) {
+        console.error("Error updating group match schedule:", error.message);
+        alert(error.message);
+        return;
+      }
+    }
+
+    alert("Group match schedule updated successfully.");
   };
 
   const handleGenerateQuarterfinals = async (tournamentId) => {
     if (!validateMatchConfig()) return;
 
     if (!quarterfinalDate) {
-      alert("Please select the quarter-final date first.");
+      alert("Please select the first knockout round date first.");
       return;
     }
 
     if (quarterfinalDate < today) {
-      alert("Quarter-final date cannot be in the past.");
+      alert("First knockout round date cannot be in the past.");
       return;
     }
 
     const confirmGenerate = window.confirm(
-      "This will generate quarter-finals from final group standings. Continue?"
+      "This will generate the first knockout round from the final group standings. Continue?"
     );
     if (!confirmGenerate) return;
 
-    const { data: existingQuarterfinals, error: existingQuarterfinalsError } =
-      await supabase
-        .from("matches")
-        .select("id")
-        .eq("tournament_id", tournamentId)
-        .eq("stage", "quarterfinal");
+    const { data: existingKnockoutMatches, error: existingKnockoutError } =
+      await getExistingKnockoutMatches(tournamentId);
 
-    if (existingQuarterfinalsError) {
+    if (existingKnockoutError) {
       console.error(
-        "Error checking existing quarter-finals:",
-        existingQuarterfinalsError.message
+        "Error checking existing knockout matches:",
+        existingKnockoutError.message
       );
-      alert(existingQuarterfinalsError.message);
+      alert(existingKnockoutError.message);
       return;
     }
 
-    if (existingQuarterfinals && existingQuarterfinals.length > 0) {
-      alert("Quarter-final matches already exist for this tournament.");
+    if ((existingKnockoutMatches || []).length > 0) {
+      alert("A knockout stage already exists for this tournament.");
       return;
     }
 
@@ -754,309 +1349,179 @@ function Tournaments() {
     );
 
     if (unfinishedGroupMatches.length > 0) {
-      alert("All group matches must be finished before generating quarter-finals.");
+      alert("All group matches must be finished before generating the knockout stage.");
       return;
     }
 
-    const groupsMap = {};
+    const groupsMap = buildGroupStandings(tournamentTeams, groupMatches);
+    const knockoutPlan = buildSeededKnockoutTeams(groupsMap);
 
-    (tournamentTeams || []).forEach((team) => {
-      const groupName = team.group_name;
-      if (!groupName) return;
+    if (knockoutPlan.error) {
+      alert(knockoutPlan.error);
+      return;
+    }
 
-      if (!groupsMap[groupName]) {
-        groupsMap[groupName] = {};
-      }
+    const qualifiedTeams = knockoutPlan.qualifiers || [];
+    const stageName = getKnockoutStageName(qualifiedTeams.length);
 
-      groupsMap[groupName][team.id] = {
-        team_id: team.id,
-        team_name: team.company_name || team.team_name,
-        group_name: groupName,
-        mp: 0,
-        w: 0,
-        d: 0,
-        l: 0,
-        gf: 0,
-        ga: 0,
-        gd: 0,
-        pts: 0,
+    if (!isValidKnockoutSize(qualifiedTeams.length) || qualifiedTeams.length < 4) {
+      alert("Could not determine a valid knockout bracket size.");
+      return;
+    }
+
+    const pairings = createSeededBracketPairings(qualifiedTeams);
+    const requiredSlots = pairings.length;
+
+    let nextQuarterfinalSlots = quarterfinalSlots;
+    if (quarterfinalSlots.length < requiredSlots) {
+      nextQuarterfinalSlots = resizeSlots(quarterfinalSlots, requiredSlots);
+      setQuarterfinalSlots(nextQuarterfinalSlots);
+    }
+
+    const knockoutMatches = pairings.map((pairing, index) => {
+      const slot = nextQuarterfinalSlots[index] || { time: "", field: "" };
+
+      return {
+        tournament_id: tournamentId,
+        team_a_id: pairing.teamA.team_id,
+        team_b_id: pairing.teamB.team_id,
+        match_date: quarterfinalDate,
+        match_time: slot.time || null,
+        field: slot.field || null,
+        status: "scheduled",
+        elapsed_seconds: 0,
+        team_a_score: 0,
+        team_b_score: 0,
+        first_half_minutes: Number(matchConfig.firstHalfMinutes),
+        second_half_minutes: Number(matchConfig.secondHalfMinutes),
+        break_minutes: Number(matchConfig.breakMinutes),
+        stage: stageName,
+        group_name: null,
+        round_number: index + 1,
+        winner_team_id: null,
+        source_match_1: null,
+        source_match_2: null,
       };
     });
 
-    (groupMatches || []).forEach((match) => {
-      if (match.status !== "finished") return;
-
-      const groupName = match.group_name;
-      if (!groupName || !groupsMap[groupName]) return;
-
-      const home = groupsMap[groupName][match.team_a_id];
-      const away = groupsMap[groupName][match.team_b_id];
-
-      if (!home || !away) return;
-
-      const homeGoals = Number(match.team_a_score || 0);
-      const awayGoals = Number(match.team_b_score || 0);
-
-      home.mp += 1;
-      away.mp += 1;
-
-      home.gf += homeGoals;
-      home.ga += awayGoals;
-      away.gf += awayGoals;
-      away.ga += homeGoals;
-
-      if (homeGoals > awayGoals) {
-        home.w += 1;
-        away.l += 1;
-        home.pts += 3;
-      } else if (homeGoals < awayGoals) {
-        away.w += 1;
-        home.l += 1;
-        away.pts += 3;
-      } else {
-        home.d += 1;
-        away.d += 1;
-        home.pts += 1;
-        away.pts += 1;
-      }
-    });
-
-    Object.keys(groupsMap).forEach((groupName) => {
-      Object.values(groupsMap[groupName]).forEach((team) => {
-        team.gd = team.gf - team.ga;
-      });
-    });
-
-    const rankGroup = (groupName) => {
-      const group = Object.values(groupsMap[groupName] || {});
-      return group.sort((a, b) => {
-        if (b.pts !== a.pts) return b.pts - a.pts;
-        if (b.gd !== a.gd) return b.gd - a.gd;
-        if (b.gf !== a.gf) return b.gf - a.gf;
-        return a.team_name.localeCompare(b.team_name);
-      });
-    };
-
-    const groupA = rankGroup("A");
-    const groupB = rankGroup("B");
-    const groupC = rankGroup("C");
-    const groupD = rankGroup("D");
-
-    if (
-      groupA.length < 2 ||
-      groupB.length < 2 ||
-      groupC.length < 2 ||
-      groupD.length < 2
-    ) {
-      alert("Groups A, B, C and D must each have at least 2 ranked teams.");
-      return;
-    }
-
-    const qf1 = quarterfinalSlots[0] || { time: "", field: "" };
-    const qf2 = quarterfinalSlots[1] || { time: "", field: "" };
-    const qf3 = quarterfinalSlots[2] || { time: "", field: "" };
-    const qf4 = quarterfinalSlots[3] || { time: "", field: "" };
-
-    const quarterfinalMatches = [
-      {
-        tournament_id: tournamentId,
-        team_a_id: groupA[0].team_id,
-        team_b_id: groupB[1].team_id,
-        match_date: quarterfinalDate,
-        match_time: qf1.time || null,
-        field: qf1.field || null,
-        status: "scheduled",
-        elapsed_seconds: 0,
-        team_a_score: 0,
-        team_b_score: 0,
-        first_half_minutes: Number(matchConfig.firstHalfMinutes),
-        second_half_minutes: Number(matchConfig.secondHalfMinutes),
-        break_minutes: Number(matchConfig.breakMinutes),
-        stage: "quarterfinal",
-        group_name: null,
-        round_number: 1,
-        winner_team_id: null,
-        source_match_1: null,
-        source_match_2: null,
-      },
-      {
-        tournament_id: tournamentId,
-        team_a_id: groupB[0].team_id,
-        team_b_id: groupA[1].team_id,
-        match_date: quarterfinalDate,
-        match_time: qf2.time || null,
-        field: qf2.field || null,
-        status: "scheduled",
-        elapsed_seconds: 0,
-        team_a_score: 0,
-        team_b_score: 0,
-        first_half_minutes: Number(matchConfig.firstHalfMinutes),
-        second_half_minutes: Number(matchConfig.secondHalfMinutes),
-        break_minutes: Number(matchConfig.breakMinutes),
-        stage: "quarterfinal",
-        group_name: null,
-        round_number: 2,
-        winner_team_id: null,
-        source_match_1: null,
-        source_match_2: null,
-      },
-      {
-        tournament_id: tournamentId,
-        team_a_id: groupC[0].team_id,
-        team_b_id: groupD[1].team_id,
-        match_date: quarterfinalDate,
-        match_time: qf3.time || null,
-        field: qf3.field || null,
-        status: "scheduled",
-        elapsed_seconds: 0,
-        team_a_score: 0,
-        team_b_score: 0,
-        first_half_minutes: Number(matchConfig.firstHalfMinutes),
-        second_half_minutes: Number(matchConfig.secondHalfMinutes),
-        break_minutes: Number(matchConfig.breakMinutes),
-        stage: "quarterfinal",
-        group_name: null,
-        round_number: 3,
-        winner_team_id: null,
-        source_match_1: null,
-        source_match_2: null,
-      },
-      {
-        tournament_id: tournamentId,
-        team_a_id: groupD[0].team_id,
-        team_b_id: groupC[1].team_id,
-        match_date: quarterfinalDate,
-        match_time: qf4.time || null,
-        field: qf4.field || null,
-        status: "scheduled",
-        elapsed_seconds: 0,
-        team_a_score: 0,
-        team_b_score: 0,
-        first_half_minutes: Number(matchConfig.firstHalfMinutes),
-        second_half_minutes: Number(matchConfig.secondHalfMinutes),
-        break_minutes: Number(matchConfig.breakMinutes),
-        stage: "quarterfinal",
-        group_name: null,
-        round_number: 4,
-        winner_team_id: null,
-        source_match_1: null,
-        source_match_2: null,
-      },
-    ];
-
-    const { error: insertQuarterfinalsError } = await supabase
+    const { error: insertKnockoutError } = await supabase
       .from("matches")
-      .insert(quarterfinalMatches);
+      .insert(knockoutMatches);
 
-    if (insertQuarterfinalsError) {
+    if (insertKnockoutError) {
       console.error(
-        "Error creating quarter-finals:",
-        insertQuarterfinalsError.message
+        "Error creating first knockout round:",
+        insertKnockoutError.message
       );
-      alert(insertQuarterfinalsError.message);
+      alert(insertKnockoutError.message);
       return;
     }
 
-    alert("Quarter-finals generated successfully.");
+    alert("First knockout round generated successfully.");
   };
 
   const handleGenerateSemifinals = async (tournamentId) => {
     if (!validateMatchConfig()) return;
 
     if (!semifinalDate) {
-      alert("Please select the semi-final date first.");
+      alert("Please select the next knockout round date first.");
       return;
     }
 
     if (semifinalDate < today) {
-      alert("Semi-final date cannot be in the past.");
+      alert("Next knockout round date cannot be in the past.");
       return;
     }
 
     const confirmGenerate = window.confirm(
-      "This will generate semi-finals from quarter-final winners. Continue?"
+      "This will generate the next knockout round from the previous round winners. Continue?"
     );
     if (!confirmGenerate) return;
 
-    const { data: existingSemifinals, error: existingSemifinalsError } =
-      await supabase
-        .from("matches")
-        .select("id")
-        .eq("tournament_id", tournamentId)
-        .eq("stage", "semifinal");
+    const { data: knockoutMatches, error: knockoutMatchesError } =
+      await getExistingKnockoutMatches(tournamentId);
 
-    if (existingSemifinalsError) {
+    if (knockoutMatchesError) {
       console.error(
-        "Error checking existing semi-finals:",
-        existingSemifinalsError.message
+        "Error fetching knockout matches:",
+        knockoutMatchesError.message
       );
-      alert(existingSemifinalsError.message);
+      alert(knockoutMatchesError.message);
       return;
     }
 
-    if (existingSemifinals && existingSemifinals.length > 0) {
-      alert("Semi-final matches already exist for this tournament.");
+    const latestStageName = getLatestPlayableKnockoutStage(knockoutMatches);
+
+    if (!latestStageName) {
+      alert("Generate the first knockout round before generating the next one.");
       return;
     }
 
-    const { data: quarterfinals, error: quarterfinalsError } = await supabase
-      .from("matches")
-      .select("*")
-      .eq("tournament_id", tournamentId)
-      .eq("stage", "quarterfinal")
-      .order("round_number", { ascending: true });
+    const latestStageMatches = (knockoutMatches || [])
+      .filter((match) => match.stage === latestStageName)
+      .sort((a, b) => Number(a.round_number || 0) - Number(b.round_number || 0));
 
-    if (quarterfinalsError) {
-      console.error("Error fetching quarter-finals:", quarterfinalsError.message);
-      alert(quarterfinalsError.message);
-      return;
-    }
-
-    if (!quarterfinals || quarterfinals.length !== 4) {
-      alert("Exactly 4 quarter-final matches are required.");
-      return;
-    }
-
-    const unfinishedQuarterfinals = quarterfinals.filter(
+    const unfinishedMatches = latestStageMatches.filter(
       (match) => match.status !== "finished"
     );
 
-    if (unfinishedQuarterfinals.length > 0) {
-      alert("All quarter-final matches must be finished before generating semi-finals.");
+    if (unfinishedMatches.length > 0) {
+      alert("All matches in the current knockout round must be finished first.");
       return;
     }
 
-    const qf1 = quarterfinals.find((m) => Number(m.round_number) === 1);
-    const qf2 = quarterfinals.find((m) => Number(m.round_number) === 2);
-    const qf3 = quarterfinals.find((m) => Number(m.round_number) === 3);
-    const qf4 = quarterfinals.find((m) => Number(m.round_number) === 4);
-
-    if (!qf1 || !qf2 || !qf3 || !qf4) {
-      alert("Quarter-final round numbers 1 to 4 are required.");
+    if (latestStageMatches.some((match) => !match.winner_team_id)) {
+      alert("Each knockout match must have winner_team_id filled.");
       return;
     }
 
-    if (
-      !qf1.winner_team_id ||
-      !qf2.winner_team_id ||
-      !qf3.winner_team_id ||
-      !qf4.winner_team_id
-    ) {
-      alert("Each quarter-final match must have winner_team_id filled.");
+    const winners = latestStageMatches
+      .map((match) => ({
+        team_id: match.winner_team_id,
+        source_match_id: match.id,
+      }))
+      .filter((item) => item.team_id);
+
+    if (winners.length <= 2) {
+      alert("The next step is the final stage. Use Generate Final Stage.");
       return;
     }
 
-    const sfSlot1 = semifinalSlots[0] || { time: "", field: "" };
-    const sfSlot2 = semifinalSlots[1] || { time: "", field: "" };
+    const nextStageName = getKnockoutStageName(winners.length);
 
-    const semifinalMatches = [
-      {
+    const stageAlreadyExists = (knockoutMatches || []).some(
+      (match) => match.stage === nextStageName
+    );
+
+    if (stageAlreadyExists) {
+      alert("That knockout round already exists for this tournament.");
+      return;
+    }
+
+    const requiredSlots = Math.floor(winners.length / 2);
+    let nextSemifinalSlots = semifinalSlots;
+
+    if (semifinalSlots.length < requiredSlots) {
+      nextSemifinalSlots = resizeSlots(semifinalSlots, requiredSlots);
+      setSemifinalSlots(nextSemifinalSlots);
+    }
+
+    const nextRoundMatches = [];
+
+    for (let i = 0; i < winners.length; i += 2) {
+      const teamA = winners[i];
+      const teamB = winners[i + 1];
+      const slot = nextSemifinalSlots[i / 2] || { time: "", field: "" };
+
+      if (!teamA || !teamB) continue;
+
+      nextRoundMatches.push({
         tournament_id: tournamentId,
-        team_a_id: qf1.winner_team_id,
-        team_b_id: qf2.winner_team_id,
+        team_a_id: teamA.team_id,
+        team_b_id: teamB.team_id,
         match_date: semifinalDate,
-        match_time: sfSlot1.time || null,
-        field: sfSlot1.field || null,
+        match_time: slot.time || null,
+        field: slot.field || null,
         status: "scheduled",
         elapsed_seconds: 0,
         team_a_score: 0,
@@ -1064,50 +1529,29 @@ function Tournaments() {
         first_half_minutes: Number(matchConfig.firstHalfMinutes),
         second_half_minutes: Number(matchConfig.secondHalfMinutes),
         break_minutes: Number(matchConfig.breakMinutes),
-        stage: "semifinal",
+        stage: nextStageName,
         group_name: null,
-        round_number: 1,
+        round_number: nextRoundMatches.length + 1,
         winner_team_id: null,
-        source_match_1: qf1.id,
-        source_match_2: qf2.id,
-      },
-      {
-        tournament_id: tournamentId,
-        team_a_id: qf3.winner_team_id,
-        team_b_id: qf4.winner_team_id,
-        match_date: semifinalDate,
-        match_time: sfSlot2.time || null,
-        field: sfSlot2.field || null,
-        status: "scheduled",
-        elapsed_seconds: 0,
-        team_a_score: 0,
-        team_b_score: 0,
-        first_half_minutes: Number(matchConfig.firstHalfMinutes),
-        second_half_minutes: Number(matchConfig.secondHalfMinutes),
-        break_minutes: Number(matchConfig.breakMinutes),
-        stage: "semifinal",
-        group_name: null,
-        round_number: 2,
-        winner_team_id: null,
-        source_match_1: qf3.id,
-        source_match_2: qf4.id,
-      },
-    ];
+        source_match_1: teamA.source_match_id,
+        source_match_2: teamB.source_match_id,
+      });
+    }
 
-    const { error: insertSemifinalsError } = await supabase
+    const { error: insertNextRoundError } = await supabase
       .from("matches")
-      .insert(semifinalMatches);
+      .insert(nextRoundMatches);
 
-    if (insertSemifinalsError) {
+    if (insertNextRoundError) {
       console.error(
-        "Error creating semi-finals:",
-        insertSemifinalsError.message
+        "Error creating next knockout round:",
+        insertNextRoundError.message
       );
-      alert(insertSemifinalsError.message);
+      alert(insertNextRoundError.message);
       return;
     }
 
-    alert("Semi-finals generated successfully.");
+    alert("Next knockout round generated successfully.");
   };
 
   const handleGenerateFinalStage = async (tournamentId) => {
@@ -1128,42 +1572,40 @@ function Tournaments() {
     );
     if (!confirmGenerate) return;
 
-    const { data: existingFinalStage, error: existingFinalStageError } =
-      await supabase
-        .from("matches")
-        .select("id, stage")
-        .eq("tournament_id", tournamentId)
-        .in("stage", ["final", "third_place"]);
+    const { data: knockoutMatches, error: knockoutMatchesError } =
+      await getExistingKnockoutMatches(tournamentId);
 
-    if (existingFinalStageError) {
+    if (knockoutMatchesError) {
       console.error(
-        "Error checking existing final stage:",
-        existingFinalStageError.message
+        "Error fetching knockout matches:",
+        knockoutMatchesError.message
       );
-      alert(existingFinalStageError.message);
+      alert(knockoutMatchesError.message);
       return;
     }
 
-    if (existingFinalStage && existingFinalStage.length > 0) {
+    const existingFinalStage = (knockoutMatches || []).filter((match) =>
+      ["final", "third_place"].includes(match.stage)
+    );
+
+    if (existingFinalStage.length > 0) {
       alert("Final or 3rd Place match already exists for this tournament.");
       return;
     }
 
-    const { data: semifinals, error: semifinalsError } = await supabase
-      .from("matches")
-      .select("*")
-      .eq("tournament_id", tournamentId)
-      .eq("stage", "semifinal")
-      .order("round_number", { ascending: true });
+    const latestStageName = getLatestPlayableKnockoutStage(knockoutMatches);
 
-    if (semifinalsError) {
-      console.error("Error fetching semi-finals:", semifinalsError.message);
-      alert(semifinalsError.message);
+    if (latestStageName !== "semifinal") {
+      alert("You must generate and finish the semi-finals before creating the final stage.");
       return;
     }
 
-    if (!semifinals || semifinals.length !== 2) {
-      alert("Exactly 2 semi-final matches are required.");
+    const semifinals = (knockoutMatches || [])
+      .filter((match) => match.stage === "semifinal")
+      .sort((a, b) => Number(a.round_number || 0) - Number(b.round_number || 0));
+
+    if (semifinals.length !== 2) {
+      alert("Exactly 2 semi-final matches are required before generating the final stage.");
       return;
     }
 
@@ -1176,13 +1618,8 @@ function Tournaments() {
       return;
     }
 
-    const sf1 = semifinals.find((m) => Number(m.round_number) === 1);
-    const sf2 = semifinals.find((m) => Number(m.round_number) === 2);
-
-    if (!sf1 || !sf2) {
-      alert("Semi-final round numbers 1 and 2 are required.");
-      return;
-    }
+    const sf1 = semifinals[0];
+    const sf2 = semifinals[1];
 
     if (!sf1.winner_team_id || !sf2.winner_team_id) {
       alert("Each semi-final match must have winner_team_id filled.");
@@ -1316,8 +1753,8 @@ function Tournaments() {
 
         {hasKnockoutSchedule && (
           <div style={{ ...previewGridStyle, marginTop: "14px" }}>
-            {renderSlotList("Quarterfinals", quarterfinalDate, quarterfinalSlots)}
-            {renderSlotList("Semifinals", semifinalDate, semifinalSlots)}
+            {renderSlotList("First Knockout Round", quarterfinalDate, quarterfinalSlots)}
+            {renderSlotList("Next Knockout Round", semifinalDate, semifinalSlots)}
 
             <div style={previewStageCardStyle}>
               <div style={previewStageTitleStyle}>Final</div>
@@ -1842,7 +2279,7 @@ function Tournaments() {
             className="tour-card"
           >
             <StageDateBlock
-              title="Quarter-final Date"
+              title="First Knockout Round Date"
               value={quarterfinalDate}
               min={today}
               onChange={setQuarterfinalDate}
@@ -1851,7 +2288,7 @@ function Tournaments() {
               {quarterfinalSlots.map((slot, index) => (
                 <SlotCard
                   key={`qf-${index}`}
-                  title={`Quarter-final ${index + 1}`}
+                  title={`Knockout Match ${index + 1}`}
                   slot={slot}
                   onTimeChange={(value) =>
                     updateSlot(setQuarterfinalSlots, index, "time", value)
@@ -1864,7 +2301,7 @@ function Tournaments() {
             </div>
 
             <StageDateBlock
-              title="Semi-final Date"
+              title="Next Knockout Round Date"
               value={semifinalDate}
               min={today}
               onChange={setSemifinalDate}
@@ -1873,7 +2310,7 @@ function Tournaments() {
               {semifinalSlots.map((slot, index) => (
                 <SlotCard
                   key={`sf-${index}`}
-                  title={`Semi-final ${index + 1}`}
+                  title={`Next Round Match ${index + 1}`}
                   slot={slot}
                   onTimeChange={(value) =>
                     updateSlot(setSemifinalSlots, index, "time", value)
@@ -2018,20 +2455,32 @@ function Tournaments() {
                     <div style={actionWrapStyle} className="tour-actions">
                       <ActionButton
                         color="#109847"
+                        icon={<CalendarDays size={15} />}
+                        label="Load Group Slots"
+                        onClick={() => handlePrepareGroupStageSchedule(t.id)}
+                      />
+                      <ActionButton
+                        color="#16a34a"
                         icon={<PlayCircle size={15} />}
-                        label="Generate Groups"
-                        onClick={() => handleGenerateGroupsAndMatches(t.id)}
+                        label="Generate Group Matches"
+                        onClick={() => handleGenerateGroupMatches(t.id)}
+                      />
+                      <ActionButton
+                        color="#0f766e"
+                        icon={<Pencil size={15} />}
+                        label="Update Group Schedule"
+                        onClick={() => handleUpdateGroupMatchSchedule(t.id)}
                       />
                       <ActionButton
                         color="#7c3aed"
                         icon={<Layers3 size={15} />}
-                        label="Generate Quarterfinals"
+                        label="Generate First Knockout Round"
                         onClick={() => handleGenerateQuarterfinals(t.id)}
                       />
                       <ActionButton
                         color="#ea580c"
                         icon={<Layers3 size={15} />}
-                        label="Generate Semifinals"
+                        label="Generate Next Knockout Round"
                         onClick={() => handleGenerateSemifinals(t.id)}
                       />
                       <ActionButton
@@ -2054,7 +2503,7 @@ function Tournaments() {
                       />
                     </div>
 
-                    {renderSchedulePreview()}
+                    {activeScheduleTournamentId && String(activeScheduleTournamentId) === String(t.id) ? renderSchedulePreview() : null}
                   </div>
                 ))}
               </div>

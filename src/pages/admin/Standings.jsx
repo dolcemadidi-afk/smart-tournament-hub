@@ -4,6 +4,7 @@ import { supabase } from "../../services/supabase";
 import {
   Trophy,
   ChevronDown,
+  ChevronRight,
   BarChart3,
   Users,
   Shield,
@@ -24,7 +25,7 @@ function Standings() {
   const [openGroups, setOpenGroups] = useState({});
 
   const [activeTab, setActiveTab] = useState("overall");
-  const [activeDrawStage, setActiveDrawStage] = useState("quarterfinal");
+  const [activeDrawStage, setActiveDrawStage] = useState("");
 
   const [userRole, setUserRole] = useState(null);
   const [userTeamId, setUserTeamId] = useState(null);
@@ -186,9 +187,63 @@ function Standings() {
     return matches.filter(
       (match) =>
         String(match.tournament_id) === String(selectedTournamentId) &&
-        ["quarterfinal", "semifinal", "final", "third_place"].includes(match.stage)
+        match.stage &&
+        match.stage !== "group"
     );
   }, [matches, selectedTournamentId]);
+
+  const getStageOrder = (stage) => {
+    if (!stage) return 999;
+
+    if (stage === "round_of_64") return 10;
+    if (stage === "round_of_32") return 20;
+    if (stage === "round_of_16") return 30;
+    if (stage === "quarterfinal") return 40;
+    if (stage === "semifinal") return 50;
+    if (stage === "final") return 60;
+    if (stage === "third_place") return 61;
+
+    return 999;
+  };
+
+  const formatStageLabel = (stage) => {
+    if (!stage) return "";
+
+    if (stage === "round_of_64") return "1/32 Finals";
+    if (stage === "round_of_32") return "1/16 Finals";
+    if (stage === "round_of_16") return "1/8 Finals";
+    if (stage === "quarterfinal") return "Quarter-Finals";
+    if (stage === "semifinal") return "Semi-Finals";
+    if (stage === "final") return "Final";
+    if (stage === "third_place") return "3rd Place";
+
+    return stage.replaceAll("_", " ");
+  };
+
+  const availableDrawStages = useMemo(() => {
+    const uniqueStages = Array.from(
+      new Set(
+        knockoutMatches
+          .map((match) => match.stage)
+          .filter((stage) => stage && stage !== "group" && stage !== "third_place")
+      )
+    );
+
+    return uniqueStages.sort((a, b) => getStageOrder(a) - getStageOrder(b));
+  }, [knockoutMatches]);
+
+  useEffect(() => {
+    if (availableDrawStages.length === 0) {
+      setActiveDrawStage("");
+      return;
+    }
+
+    const stillExists = availableDrawStages.includes(activeDrawStage);
+
+    if (!stillExists) {
+      setActiveDrawStage(availableDrawStages[0]);
+    }
+  }, [availableDrawStages, activeDrawStage]);
 
   const groupedStandings = useMemo(() => {
     const groupsMap = {};
@@ -399,38 +454,7 @@ function Standings() {
         }
       }
 
-      const teamGroupMap = {};
-      teamUpdates.forEach((team) => {
-        teamGroupMap[String(team.id)] = team.group_name;
-      });
-
-      const tournamentGroupMatches = matches.filter(
-        (match) =>
-          String(match.tournament_id) === String(selectedTournamentId) &&
-          match.stage === "group"
-      );
-
-      for (const match of tournamentGroupMatches) {
-        const teamAGroup = teamGroupMap[String(match.team_a_id)];
-        const teamBGroup = teamGroupMap[String(match.team_b_id)];
-
-        const nextGroupName =
-          teamAGroup && teamBGroup && teamAGroup === teamBGroup
-            ? teamAGroup
-            : null;
-
-        const { error } = await supabase
-          .from("matches")
-          .update({ group_name: nextGroupName })
-          .eq("id", match.id);
-
-        if (error) {
-          throw error;
-        }
-      }
-
       await fetchTeams();
-      await fetchMatches();
     } catch (error) {
       console.error("Error generating groups:", error.message);
     } finally {
@@ -455,25 +479,7 @@ function Standings() {
         }
       }
 
-      const tournamentGroupMatches = matches.filter(
-        (match) =>
-          String(match.tournament_id) === String(selectedTournamentId) &&
-          match.stage === "group"
-      );
-
-      for (const match of tournamentGroupMatches) {
-        const { error } = await supabase
-          .from("matches")
-          .update({ group_name: null })
-          .eq("id", match.id);
-
-        if (error) {
-          throw error;
-        }
-      }
-
       await fetchTeams();
-      await fetchMatches();
     } catch (error) {
       console.error("Error resetting groups:", error.message);
     } finally {
@@ -510,38 +516,74 @@ function Standings() {
       .slice(0, 20);
   }, [goals, players, tournamentTeamIds]);
 
-  const visibleKnockoutMatches = useMemo(() => {
+  const stageMatches = useMemo(() => {
+    if (!activeDrawStage) return [];
+
+    if (activeDrawStage === "final") {
+      return knockoutMatches
+        .filter((match) => ["final", "third_place"].includes(match.stage))
+        .sort((a, b) => getStageOrder(a.stage) - getStageOrder(b.stage));
+    }
+
     return knockoutMatches
       .filter((match) => match.stage === activeDrawStage)
       .sort((a, b) => {
+        if ((a.round_number || 0) !== (b.round_number || 0)) {
+          return (a.round_number || 0) - (b.round_number || 0);
+        }
+
         const aDate = new Date(
           `${a.match_date || "1970-01-01"}T${a.match_time || "00:00"}`
         ).getTime();
         const bDate = new Date(
           `${b.match_date || "1970-01-01"}T${b.match_time || "00:00"}`
         ).getTime();
+
         return aDate - bDate;
       });
   }, [knockoutMatches, activeDrawStage]);
 
+  const groupedDrawMatches = useMemo(() => {
+    if (activeDrawStage === "final") {
+      return [];
+    }
+
+    const groups = [];
+    for (let i = 0; i < stageMatches.length; i += 2) {
+      groups.push(stageMatches.slice(i, i + 2));
+    }
+    return groups;
+  }, [stageMatches, activeDrawStage]);
+
+  const finalMatch = useMemo(() => {
+    return stageMatches.find((match) => match.stage === "final") || null;
+  }, [stageMatches]);
+
+  const thirdPlaceMatch = useMemo(() => {
+    return stageMatches.find((match) => match.stage === "third_place") || null;
+  }, [stageMatches]);
+
   const winnersData = useMemo(() => {
-    const finalMatch = knockoutMatches.find((m) => m.stage === "final");
-    const thirdPlaceMatch = knockoutMatches.find((m) => m.stage === "third_place");
+    const finalKnockoutMatch = knockoutMatches.find((m) => m.stage === "final");
+    const thirdPlaceKnockoutMatch = knockoutMatches.find(
+      (m) => m.stage === "third_place"
+    );
 
     let champion = null;
     let runnerUp = null;
     let thirdPlace = null;
 
-    if (finalMatch?.winner_team_id) {
+    if (finalKnockoutMatch?.winner_team_id) {
       champion = {
         label: "Champion",
-        team_id: finalMatch.winner_team_id,
+        team_id: finalKnockoutMatch.winner_team_id,
       };
 
       const loserId =
-        String(finalMatch.winner_team_id) === String(finalMatch.team_a_id)
-          ? finalMatch.team_b_id
-          : finalMatch.team_a_id;
+        String(finalKnockoutMatch.winner_team_id) ===
+        String(finalKnockoutMatch.team_a_id)
+          ? finalKnockoutMatch.team_b_id
+          : finalKnockoutMatch.team_a_id;
 
       if (loserId) {
         runnerUp = {
@@ -551,10 +593,10 @@ function Standings() {
       }
     }
 
-    if (thirdPlaceMatch?.winner_team_id) {
+    if (thirdPlaceKnockoutMatch?.winner_team_id) {
       thirdPlace = {
         label: "Third Place",
-        team_id: thirdPlaceMatch.winner_team_id,
+        team_id: thirdPlaceKnockoutMatch.winner_team_id,
       };
     }
 
@@ -606,7 +648,7 @@ function Standings() {
     );
   };
 
-  const renderDrawMatchCard = (match) => {
+  const renderDrawMatchCard = (match, compact = false) => {
     const teamAName = getTeamNameById(match.team_a_id);
     const teamBName = getTeamNameById(match.team_b_id);
     const teamALogo = getTeamLogoById(match.team_a_id);
@@ -623,9 +665,7 @@ function Standings() {
       teamBPenalties !== null &&
       teamBPenalties !== undefined;
 
-    const winnerName = match.winner_team_id
-      ? getTeamNameById(match.winner_team_id)
-      : null;
+    const winnerId = match.winner_team_id ? String(match.winner_team_id) : null;
 
     return (
       <button
@@ -635,29 +675,36 @@ function Standings() {
         style={drawMatchCardButtonStyle}
         className="draw-match-mobile"
       >
-        <div style={drawMatchCardStyle}>
-          <div style={drawMetaBarStyle}>
-            <span>{match.match_date || "-"}</span>
-            <span>{match.match_time || "-"}</span>
-            <span>{match.field || "No field"}</span>
-          </div>
-
+        <div
+          style={{
+            ...drawMatchCardStyle,
+            ...(compact ? drawCompactCardStyle : {}),
+          }}
+        >
           <div style={drawTeamsWrapStyle}>
             <div style={drawTeamRowStyle}>
               <div style={drawTeamLeftStyle}>
-                <div style={logoWrapStyle}>
+                <div style={drawFlagWrapStyle}>
                   {teamALogo ? (
-                    <img src={teamALogo} alt={teamAName} style={logoImageStyle} />
+                    <img src={teamALogo} alt={teamAName} style={drawFlagImageStyle} />
                   ) : (
                     <span style={logoFallbackStyle}>
                       {teamAName?.charAt(0)?.toUpperCase() || "T"}
                     </span>
                   )}
                 </div>
-                <span style={drawTeamNameStyle} className="draw-team-name-mobile">
+                <span
+                  style={{
+                    ...drawTeamNameStyle,
+                    fontWeight:
+                      winnerId && winnerId === String(match.team_a_id) ? 800 : 500,
+                  }}
+                  className="draw-team-name-mobile"
+                >
                   {teamAName}
                 </span>
               </div>
+
               <span style={drawScoreStyle} className="draw-score-mobile">
                 {teamAScore}
                 {showPenalties && ` (${teamAPenalties})`}
@@ -666,33 +713,73 @@ function Standings() {
 
             <div style={drawTeamRowStyle}>
               <div style={drawTeamLeftStyle}>
-                <div style={logoWrapStyle}>
+                <div style={drawFlagWrapStyle}>
                   {teamBLogo ? (
-                    <img src={teamBLogo} alt={teamBName} style={logoImageStyle} />
+                    <img src={teamBLogo} alt={teamBName} style={drawFlagImageStyle} />
                   ) : (
                     <span style={logoFallbackStyle}>
                       {teamBName?.charAt(0)?.toUpperCase() || "T"}
                     </span>
                   )}
                 </div>
-                <span style={drawTeamNameStyle} className="draw-team-name-mobile">
+                <span
+                  style={{
+                    ...drawTeamNameStyle,
+                    fontWeight:
+                      winnerId && winnerId === String(match.team_b_id) ? 800 : 500,
+                  }}
+                  className="draw-team-name-mobile"
+                >
                   {teamBName}
                 </span>
               </div>
+
               <span style={drawScoreStyle} className="draw-score-mobile">
                 {teamBScore}
                 {showPenalties && ` (${teamBPenalties})`}
               </span>
             </div>
-
-            {winnerName && (
-              <div style={drawWinnerBadgeStyle}>
-                Winner: {winnerName}
-              </div>
-            )}
           </div>
         </div>
       </button>
+    );
+  };
+
+  const renderDrawPair = (pair, index) => {
+    return (
+      <div key={`pair-${index}`} style={drawPairWrapStyle} className="draw-pair-wrap">
+        <div style={drawPairMatchesStyle}>
+          {pair.map((match) => renderDrawMatchCard(match, true))}
+        </div>
+
+        <div style={drawConnectorWrapStyle}>
+          <div style={drawConnectorLineStyle} />
+          <button
+            type="button"
+            onClick={() => {
+              const matchToOpen = pair[0];
+              if (matchToOpen?.id) {
+                navigate(`/matches/${matchToOpen.id}`);
+              }
+            }}
+            style={drawConnectorButtonStyle}
+            aria-label="Open match"
+          >
+            <ChevronRight size={22} strokeWidth={2.5} />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderFinalStageCard = (label, match) => {
+    if (!match) return null;
+
+    return (
+      <div style={finalStageBlockStyle}>
+        {label ? <div style={finalStageLabelStyle}>{label}</div> : null}
+        {renderDrawMatchCard(match)}
+      </div>
     );
   };
 
@@ -795,7 +882,16 @@ function Standings() {
             }
 
             .standings-subtab-row {
-              flex-wrap: wrap !important;
+              display: flex !important;
+              gap: 10px !important;
+              overflow-x: auto !important;
+              flex-wrap: nowrap !important;
+              padding-bottom: 4px !important;
+              scrollbar-width: none;
+            }
+
+            .standings-subtab-row::-webkit-scrollbar {
+              display: none;
             }
 
             .desktop-standings-table {
@@ -807,11 +903,11 @@ function Standings() {
             }
 
             .draw-stage-wrap {
-              gap: 10px !important;
+              gap: 16px !important;
             }
 
             .draw-match-mobile {
-              border-radius: 12px !important;
+              border-radius: 14px !important;
             }
 
             .draw-team-name-mobile {
@@ -819,17 +915,13 @@ function Standings() {
             }
 
             .draw-score-mobile {
-              font-size: 18px !important;
-            }
-
-            .draw-subtabs-mobile {
-              gap: 8px !important;
-              flex-wrap: wrap !important;
+              font-size: 16px !important;
             }
 
             .draw-subtabs-mobile button {
-              padding: 8px 12px !important;
+              padding: 12px 16px !important;
               font-size: 13px !important;
+              white-space: nowrap !important;
             }
 
             .standings-organizer-actions {
@@ -839,6 +931,11 @@ function Standings() {
 
             .standings-organizer-actions button {
               width: 100% !important;
+            }
+
+            .draw-pair-wrap {
+              grid-template-columns: 1fr auto !important;
+              gap: 8px !important;
             }
           }
 
@@ -1031,49 +1128,25 @@ function Standings() {
                 style={subTabsRowStyle}
                 className="standings-subtab-row draw-subtabs-mobile"
               >
-                <button
-                  type="button"
-                  onClick={() => setActiveDrawStage("quarterfinal")}
-                  style={{
-                    ...subTabButtonStyle,
-                    ...(activeDrawStage === "quarterfinal" ? activeSubTabStyle : {}),
-                  }}
-                >
-                  Quarter-Finals
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveDrawStage("semifinal")}
-                  style={{
-                    ...subTabButtonStyle,
-                    ...(activeDrawStage === "semifinal" ? activeSubTabStyle : {}),
-                  }}
-                >
-                  Semi-Finals
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveDrawStage("third_place")}
-                  style={{
-                    ...subTabButtonStyle,
-                    ...(activeDrawStage === "third_place" ? activeSubTabStyle : {}),
-                  }}
-                >
-                  Third Place
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveDrawStage("final")}
-                  style={{
-                    ...subTabButtonStyle,
-                    ...(activeDrawStage === "final" ? activeSubTabStyle : {}),
-                  }}
-                >
-                  Final
-                </button>
+                {availableDrawStages.length === 0 ? (
+                  <div style={{ ...sectionSubtitleStyle, marginTop: 0 }}>
+                    No knockout stages available yet.
+                  </div>
+                ) : (
+                  availableDrawStages.map((stage) => (
+                    <button
+                      key={stage}
+                      type="button"
+                      onClick={() => setActiveDrawStage(stage)}
+                      style={{
+                        ...drawStageTabStyle,
+                        ...(activeDrawStage === stage ? activeDrawStageTabStyle : {}),
+                      }}
+                    >
+                      {formatStageLabel(stage)}
+                    </button>
+                  ))
+                )}
               </div>
             )}
           </div>
@@ -1217,13 +1290,22 @@ function Standings() {
 
           {activeTab === "draw" && (
             <div
-              style={{ display: "grid", gap: "12px" }}
+              style={{ display: "grid", gap: "16px" }}
               className="draw-stage-wrap"
             >
-              {visibleKnockoutMatches.length === 0 ? (
+              {activeDrawStage === "final" ? (
+                !finalMatch && !thirdPlaceMatch ? (
+                  <div style={emptyStateStyle}>No matches available for this stage yet.</div>
+                ) : (
+                  <>
+                    {renderFinalStageCard("", finalMatch)}
+                    {renderFinalStageCard("3rd place", thirdPlaceMatch)}
+                  </>
+                )
+              ) : groupedDrawMatches.length === 0 ? (
                 <div style={emptyStateStyle}>No matches available for this stage yet.</div>
               ) : (
-                visibleKnockoutMatches.map((match) => renderDrawMatchCard(match))
+                groupedDrawMatches.map((pair, index) => renderDrawPair(pair, index))
               )}
             </div>
           )}
@@ -1281,9 +1363,7 @@ function Standings() {
                         </div>
                       </div>
 
-                      <div style={scorerGoalsBoxStyle}>
-                        {scorer.goals}
-                      </div>
+                      <div style={scorerGoalsBoxStyle}>{scorer.goals}</div>
                     </div>
                   ))}
                 </div>
@@ -1599,22 +1679,25 @@ const activeTabStyle = {
 
 const subTabsRowStyle = {
   display: "flex",
-  gap: "10px",
-  marginTop: "14px",
+  gap: "12px",
+  marginTop: "18px",
+  overflowX: "auto",
 };
 
-const subTabButtonStyle = {
-  padding: "9px 14px",
-  borderRadius: "999px",
+const drawStageTabStyle = {
+  padding: "12px 18px",
+  borderRadius: "12px",
   border: "none",
   fontWeight: "700",
   cursor: "pointer",
-  background: "#f3f4f6",
-  color: "#334155",
+  background: "#e5e7eb",
+  color: "#4b5563",
+  fontSize: "14px",
+  whiteSpace: "nowrap",
 };
 
-const activeSubTabStyle = {
-  background: "#1476b6",
+const activeDrawStageTabStyle = {
+  background: "#ff1455",
   color: "#fff",
 };
 
@@ -1853,72 +1936,122 @@ const drawMatchCardButtonStyle = {
 };
 
 const drawMatchCardStyle = {
-  background: "#fff",
+  background: "#f1f3f5",
+  borderRadius: "14px",
+  padding: "14px 16px",
   border: "1px solid #e5e7eb",
-  borderRadius: "12px",
-  overflow: "hidden",
-  boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
 };
 
-const drawMetaBarStyle = {
-  padding: "8px 12px",
-  background: "#f8fafc",
-  borderBottom: "1px solid #e5e7eb",
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "8px",
-  flexWrap: "wrap",
-  fontSize: "11px",
-  fontWeight: "700",
-  color: "#64748b",
+const drawCompactCardStyle = {
+  background: "#f1f3f5",
 };
 
 const drawTeamsWrapStyle = {
-  padding: "10px 12px",
   display: "grid",
-  gap: "8px",
+  gap: "2px",
 };
 
 const drawTeamRowStyle = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  gap: "10px",
+  padding: "6px 0",
+  gap: "12px",
 };
 
 const drawTeamLeftStyle = {
   display: "flex",
   alignItems: "center",
-  gap: "8px",
+  gap: "12px",
   minWidth: 0,
   flex: 1,
 };
 
+const drawFlagWrapStyle = {
+  width: "26px",
+  height: "18px",
+  minWidth: "26px",
+  overflow: "hidden",
+  borderRadius: "2px",
+  background: "#ffffff",
+  border: "1px solid rgba(0,0,0,0.06)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+const drawFlagImageStyle = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+};
+
 const drawTeamNameStyle = {
-  fontSize: "14px",
-  fontWeight: "700",
+  fontSize: "16px",
+  fontWeight: "500",
   color: "#111827",
   lineHeight: "1.2",
 };
 
 const drawScoreStyle = {
-  fontSize: "18px",
-  fontWeight: "800",
+  fontSize: "16px",
+  fontWeight: "700",
   color: "#111827",
-  minWidth: "18px",
+  minWidth: "20px",
   textAlign: "right",
 };
 
-const drawWinnerBadgeStyle = {
-  marginTop: "6px",
-  width: "fit-content",
-  background: "rgba(16,152,71,0.10)",
-  color: "#109847",
-  border: "1px solid rgba(16,152,71,0.18)",
-  borderRadius: "999px",
-  padding: "6px 10px",
-  fontSize: "12px",
-  fontWeight: "800",
+const drawPairWrapStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr auto",
+  gap: "10px",
+  alignItems: "center",
+};
+
+const drawPairMatchesStyle = {
+  display: "grid",
+  gap: "12px",
+};
+
+const drawConnectorWrapStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  minWidth: "48px",
+};
+
+const drawConnectorLineStyle = {
+  width: "18px",
+  height: "1px",
+  background: "#d1d5db",
+};
+
+const drawConnectorButtonStyle = {
+  width: "40px",
+  height: "40px",
+  borderRadius: "10px",
+  background: "#f1f3f5",
+  border: "1px solid #e5e7eb",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#111827",
+  cursor: "pointer",
+  flexShrink: 0,
+};
+
+const finalStageBlockStyle = {
+  background: "#f1f3f5",
+  borderRadius: "14px",
+  padding: "10px",
+  border: "1px solid #e5e7eb",
+};
+
+const finalStageLabelStyle = {
+  fontSize: "14px",
+  fontWeight: "700",
+  color: "#6b7280",
+  marginBottom: "8px",
 };
 
 const scorersCardStyle = {
