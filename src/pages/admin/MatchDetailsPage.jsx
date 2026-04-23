@@ -37,6 +37,8 @@ function MatchDetailsPage() {
   const [cardSaving, setCardSaving] = useState(false);
 
   const [penaltySaving, setPenaltySaving] = useState(false);
+  const [winnerPulseTeamId, setWinnerPulseTeamId] = useState(null);
+  const [penaltyInputs, setPenaltyInputs] = useState({ a: "", b: "" });
 
   const [motmPlayerId, setMotmPlayerId] = useState("");
   const [motmSaving, setMotmSaving] = useState(false);
@@ -84,6 +86,16 @@ function MatchDetailsPage() {
 
     setMatch(data);
     setMotmPlayerId(data.man_of_the_match_player_id || "");
+    setPenaltyInputs({
+      a:
+        data?.team_a_penalties === null || data?.team_a_penalties === undefined
+          ? ""
+          : String(data.team_a_penalties),
+      b:
+        data?.team_b_penalties === null || data?.team_b_penalties === undefined
+          ? ""
+          : String(data.team_b_penalties),
+    });
   };
 
   const fetchTeams = async () => {
@@ -121,6 +133,8 @@ function MatchDetailsPage() {
         `
         *,
         players (
+          id,
+          team_id,
           full_name,
           jersey_number,
           photo_url
@@ -142,16 +156,7 @@ function MatchDetailsPage() {
   const fetchCards = async () => {
     const { data, error } = await supabase
       .from("cards")
-      .select(
-        `
-        *,
-        players (
-          full_name,
-          jersey_number,
-          photo_url
-        )
-      `
-      )
+      .select("*")
       .eq("match_id", id)
       .order("minute", { ascending: true })
       .order("created_at", { ascending: true });
@@ -162,6 +167,38 @@ function MatchDetailsPage() {
     }
 
     setCards(data || []);
+  };
+
+  const normalizeCardType = (value) => {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "yellow" || normalized === "red") return normalized;
+    return "";
+  };
+
+  const getSuspendedIdsFromCards = (cardRows = []) => {
+    const suspendedSet = new Set();
+    const yellowCountMap = {};
+
+    cardRows.forEach((card) => {
+      if (!card?.player_id) return;
+
+      const type = normalizeCardType(card.card_type);
+
+      if (type === "red") {
+        suspendedSet.add(card.player_id);
+        return;
+      }
+
+      if (type === "yellow") {
+        yellowCountMap[card.player_id] = (yellowCountMap[card.player_id] || 0) + 1;
+      }
+    });
+
+    Object.entries(yellowCountMap).forEach(([playerId, count]) => {
+      if (count >= 2) suspendedSet.add(playerId);
+    });
+
+    return [...suspendedSet];
   };
 
   const fetchPreviousMatchSuspensions = async (currentMatch) => {
@@ -274,24 +311,9 @@ function MatchDetailsPage() {
       const cardsForMatch = (previousCards || []).filter(
         (c) => c.match_id === matchId
       );
-      const yellowCountMap = {};
 
-      cardsForMatch.forEach((card) => {
-        if (!card.player_id) return;
-
-        if (card.card_type === "red") {
-          suspendedSet.add(card.player_id);
-          return;
-        }
-
-        if (card.card_type === "yellow") {
-          yellowCountMap[card.player_id] =
-            (yellowCountMap[card.player_id] || 0) + 1;
-        }
-      });
-
-      Object.entries(yellowCountMap).forEach(([playerId, count]) => {
-        if (count >= 2) suspendedSet.add(playerId);
+      getSuspendedIdsFromCards(cardsForMatch).forEach((playerId) => {
+        suspendedSet.add(playerId);
       });
     });
 
@@ -400,11 +422,15 @@ function MatchDetailsPage() {
     return "00:00";
   };
 
-  const isKnockout =
-    match?.stage === "quarterfinal" ||
-    match?.stage === "semifinal" ||
-    match?.stage === "final" ||
-    match?.stage === "third_place";
+  const isKnockout = [
+    "quarterfinal",
+    "semifinal",
+    "final",
+    "third_place",
+    "round_of_16",
+    "round_of_32",
+    "round_of_64",
+  ].includes(match?.stage);
 
   const regularTeamAScore = Number(match?.team_a_score || 0);
   const regularTeamBScore = Number(match?.team_b_score || 0);
@@ -419,11 +445,39 @@ function MatchDetailsPage() {
 
   const isRegularDraw = regularTeamAScore === regularTeamBScore;
 
-  const showPenalties =
+  const hasSavedPenalties =
     isKnockout &&
     match?.status === "finished" &&
     isRegularDraw &&
-    !match?.winner_team_id;
+    Boolean(match?.winner_team_id) &&
+    penaltyTeamAScore !== "" &&
+    penaltyTeamBScore !== "";
+
+  const showPenaltyInputs =
+    isKnockout &&
+    match?.status === "finished" &&
+    isRegularDraw &&
+    !hasSavedPenalties;
+
+  const livePenaltyTeamAScore =
+    penaltyInputs.a === "" ? 0 : Number(penaltyInputs.a);
+
+  const livePenaltyTeamBScore =
+    penaltyInputs.b === "" ? 0 : Number(penaltyInputs.b);
+
+  const displayPenaltyTeamAScore = showPenaltyInputs
+    ? livePenaltyTeamAScore
+    : penaltyTeamAScore;
+
+  const displayPenaltyTeamBScore = showPenaltyInputs
+    ? livePenaltyTeamBScore
+    : penaltyTeamBScore;
+
+  const showPenaltiesResult =
+    isKnockout &&
+    match?.status === "finished" &&
+    isRegularDraw &&
+    (showPenaltyInputs || hasSavedPenalties);
 
   const getPhaseLabel = (currentMatch) => {
     if (currentMatch?.status === "live") {
@@ -468,13 +522,13 @@ function MatchDetailsPage() {
   const handleSavePenalties = async () => {
     if (!match || !canManageMatch) return;
 
-    if (!showPenalties) {
+    if (!showPenaltyInputs) {
       alert("Penalties not available.");
       return;
     }
 
-    const aPen = Number(match.team_a_penalties);
-    const bPen = Number(match.team_b_penalties);
+    const aPen = Number(penaltyInputs.a);
+    const bPen = Number(penaltyInputs.b);
 
     if (Number.isNaN(aPen) || Number.isNaN(bPen)) {
       alert("Enter valid penalties");
@@ -901,28 +955,7 @@ function MatchDetailsPage() {
   }, [match, tick, isKnockout, canManageMatch]);
 
   const currentMatchSuspendedIds = useMemo(() => {
-    const yellowCountMap = {};
-    const blockedIds = new Set();
-
-    cards.forEach((card) => {
-      if (!card.player_id) return;
-
-      if (card.card_type === "red") {
-        blockedIds.add(card.player_id);
-        return;
-      }
-
-      if (card.card_type === "yellow") {
-        yellowCountMap[card.player_id] =
-          (yellowCountMap[card.player_id] || 0) + 1;
-
-        if (yellowCountMap[card.player_id] >= 2) {
-          blockedIds.add(card.player_id);
-        }
-      }
-    });
-
-    return [...blockedIds];
+    return getSuspendedIdsFromCards(cards);
   }, [cards]);
 
   const suspendedPlayerIds = useMemo(() => {
@@ -1026,7 +1059,7 @@ function MatchDetailsPage() {
         match_id: match.id,
         team_id: cardTeamId,
         player_id: cardPlayerId,
-        card_type: cardType,
+        card_type: normalizeCardType(cardType),
         minute: calculatedMinute,
       },
     ]);
@@ -1044,6 +1077,7 @@ function MatchDetailsPage() {
     setCardSaving(false);
 
     await fetchCards();
+    await fetchPreviousMatchSuspensions(match);
   };
 
   const handleDeleteGoal = async (goal) => {
@@ -1143,6 +1177,17 @@ function MatchDetailsPage() {
   }, [match, players]);
 
   const motmTeamName = motmPlayer ? getTeamName(motmPlayer.team_id) : "";
+
+  useEffect(() => {
+    if (!match?.winner_team_id) return;
+
+    setWinnerPulseTeamId(match.winner_team_id);
+    const timeout = setTimeout(() => {
+      setWinnerPulseTeamId(null);
+    }, 1600);
+
+    return () => clearTimeout(timeout);
+  }, [match?.winner_team_id]);
 
   if (!match) {
     return (
@@ -1273,6 +1318,7 @@ function MatchDetailsPage() {
 
     return (
       <div
+        className={large ? "match-team-logo-ring" : ""}
         style={{
           width: large ? "clamp(50px, 14vw, 80px)" : "32px",
           height: large ? "clamp(50px, 14vw, 80px)" : "32px",
@@ -1318,12 +1364,16 @@ function MatchDetailsPage() {
   const renderEventRow = (event) => {
     const isTeamA = event.team_id === match.team_a_id;
     const isGoal = event.eventType === "goal";
-    const isYellow = event.card_type === "yellow";
+    const normalizedCardType = normalizeCardType(event.card_type);
+    const isYellow = normalizedCardType === "yellow";
     const minuteText = `${event.minute || 0}'`;
 
-    const playerName = event.players?.full_name || "Unknown Player";
-    const jersey = event.players?.jersey_number
-      ? ` #${event.players.jersey_number}`
+    const eventPlayer =
+      event.players || players.find((player) => player.id === event.player_id) || null;
+
+    const playerName = eventPlayer?.full_name || getPlayerName(event.player_id);
+    const jersey = eventPlayer?.jersey_number
+      ? ` #${eventPlayer.jersey_number}`
       : "";
 
     return (
@@ -1456,10 +1506,82 @@ function MatchDetailsPage() {
       ? "#16a34a"
       : "#1476b6";
 
+
   return (
     <>
       <style>
         {`
+
+          .match-big-score {
+            display: flex !important;
+            align-items: baseline !important;
+            justify-content: center !important;
+            gap: 6px !important;
+            flex-wrap: nowrap !important;
+            white-space: nowrap !important;
+          }
+
+          .match-score-main {
+            display: inline-block;
+            transition: transform 0.28s ease, opacity 0.28s ease, text-shadow 0.28s ease;
+            animation: scorePulse 0.6s ease;
+          }
+
+          .match-score-penalty {
+            display: inline-block;
+            font-size: clamp(16px, 4vw, 22px) !important;
+            color: #6b7280 !important;
+            font-weight: 700 !important;
+            line-height: 1 !important;
+            transform: translateY(-2px);
+          }
+
+          .match-score-dash {
+            display: inline-block;
+            margin: 0 2px;
+            transform: translateY(-1px);
+          }
+
+          .match-live-score .match-score-main {
+            animation: liveScorePulse 1.6s ease-in-out infinite;
+          }
+
+          @keyframes scorePulse {
+            0% { transform: scale(0.92); opacity: 0.75; }
+            55% { transform: scale(1.08); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+          }
+
+          @keyframes liveScorePulse {
+            0%, 100% { transform: scale(1); text-shadow: 0 0 0 rgba(255,20,85,0); }
+            50% { transform: scale(1.06); text-shadow: 0 0 18px rgba(255,20,85,0.18); }
+          }
+
+          .match-team-winner {
+            position: relative;
+          }
+
+          .match-team-winner .match-team-logo-ring {
+            box-shadow: 0 0 0 3px rgba(22,163,74,0.18), 0 0 0 8px rgba(22,163,74,0.08);
+            border-color: rgba(22,163,74,0.45) !important;
+          }
+
+          .match-team-winner .match-team-name {
+            color: #15803d !important;
+            font-weight: 800 !important;
+          }
+
+          .match-team-winner-pulse {
+            animation: teamWinnerPulse 1.2s ease;
+          }
+
+          @keyframes teamWinnerPulse {
+            0% { transform: scale(1); }
+            35% { transform: scale(1.05); }
+            70% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+          }
+
           @media (max-width: 1024px) {
             .match-main-grid {
               grid-template-columns: 1fr !important;
@@ -1519,6 +1641,11 @@ function MatchDetailsPage() {
             .match-big-score {
               font-size: 34px !important;
               letter-spacing: 0 !important;
+              gap: 4px !important;
+            }
+
+            .match-score-penalty {
+              font-size: 16px !important;
             }
 
             .match-phase {
@@ -1574,14 +1701,17 @@ function MatchDetailsPage() {
             }
 
             .match-motm-card {
-              flex-direction: column !important;
-              text-align: center !important;
-              gap: 10px !important;
-              padding: 10px !important;
+              flex-direction: row !important;
+              align-items: center !important;
+              justify-content: flex-start !important;
+              text-align: left !important;
+              gap: 12px !important;
+              padding: 10px 12px !important;
             }
 
             .match-motm-content {
-              text-align: center !important;
+              text-align: left !important;
+              flex: 1 !important;
             }
           }
         `}
@@ -1601,7 +1731,7 @@ function MatchDetailsPage() {
             </div>
 
             <div style={scoreboardGridStyle} className="match-scoreboard">
-              <div style={teamColumnStyle} className="match-team-column">
+              <div style={teamColumnStyle} className={`match-team-column ${match.winner_team_id === match.team_a_id ? "match-team-winner" : ""} ${winnerPulseTeamId === match.team_a_id ? "match-team-winner-pulse" : ""}`}>
                 {renderTeamLogo(match.team_a_id, true)}
                 <div style={teamNameBigStyle} className="match-team-name">
                   {getTeamName(match.team_a_id)}
@@ -1609,16 +1739,45 @@ function MatchDetailsPage() {
               </div>
 
               <div style={scoreCenterStyle} className="match-center-score">
-                <div style={scoreBigStyle} className="match-big-score">
-                  {regularTeamAScore}
-                  {showPenalties &&
-                    penaltyTeamAScore !== "" &&
-                    ` (${penaltyTeamAScore})`}
-                  {" - "}
-                  {regularTeamBScore}
-                  {showPenalties &&
-                    penaltyTeamBScore !== "" &&
-                    ` (${penaltyTeamBScore})`}
+                <div
+                  style={scoreBigStyle}
+                  className={`match-big-score ${
+                    match.status === "live" ? "match-live-score" : ""
+                  }`}
+                >
+                  <span
+                    className="match-score-main"
+                    key={`team-a-${regularTeamAScore}-${displayPenaltyTeamAScore}`}
+                  >
+                    {regularTeamAScore}
+                  </span>
+
+                  {showPenaltiesResult && (
+                    <span
+                      className="match-score-penalty"
+                      key={`team-a-pen-${displayPenaltyTeamAScore}`}
+                    >
+                      ({displayPenaltyTeamAScore})
+                    </span>
+                  )}
+
+                  <span className="match-score-dash">-</span>
+
+                  <span
+                    className="match-score-main"
+                    key={`team-b-${regularTeamBScore}-${displayPenaltyTeamBScore}`}
+                  >
+                    {regularTeamBScore}
+                  </span>
+
+                  {showPenaltiesResult && (
+                    <span
+                      className="match-score-penalty"
+                      key={`team-b-pen-${displayPenaltyTeamBScore}`}
+                    >
+                      ({displayPenaltyTeamBScore})
+                    </span>
+                  )}
                 </div>
 
                 <div
@@ -1638,7 +1797,7 @@ function MatchDetailsPage() {
                   {match.break_minutes || 5}m
                 </div>
 
-                {showPenalties && canManageMatch && (
+                {showPenaltyInputs && canManageMatch && (
                   <div
                     style={penaltiesRowStyle}
                     className="match-penalties-row"
@@ -1646,12 +1805,13 @@ function MatchDetailsPage() {
                     <input
                       type="number"
                       min="0"
+                      step="1"
                       placeholder={`${getTeamName(match.team_a_id)} penalties`}
-                      value={match.team_a_penalties ?? ""}
+                      value={penaltyInputs.a}
                       onChange={(e) =>
-                        setMatch((prev) => ({
+                        setPenaltyInputs((prev) => ({
                           ...prev,
-                          team_a_penalties: e.target.value,
+                          a: e.target.value,
                         }))
                       }
                       style={{ ...inputStyle, maxWidth: "180px" }}
@@ -1660,12 +1820,13 @@ function MatchDetailsPage() {
                     <input
                       type="number"
                       min="0"
+                      step="1"
                       placeholder={`${getTeamName(match.team_b_id)} penalties`}
-                      value={match.team_b_penalties ?? ""}
+                      value={penaltyInputs.b}
                       onChange={(e) =>
-                        setMatch((prev) => ({
+                        setPenaltyInputs((prev) => ({
                           ...prev,
-                          team_b_penalties: e.target.value,
+                          b: e.target.value,
                         }))
                       }
                       style={{ ...inputStyle, maxWidth: "180px" }}
@@ -1692,7 +1853,7 @@ function MatchDetailsPage() {
                     Man of the Match
                   </div>
 
-                  {canManageMatch && (
+                  {canManageMatch && !motmPlayer && (
                     <div style={motmEditorStyle}>
                       <select
                         value={motmPlayerId}
@@ -1755,7 +1916,7 @@ function MatchDetailsPage() {
                 </div>
               </div>
 
-              <div style={teamColumnStyle} className="match-team-column">
+              <div style={teamColumnStyle} className={`match-team-column ${match.winner_team_id === match.team_b_id ? "match-team-winner" : ""} ${winnerPulseTeamId === match.team_b_id ? "match-team-winner-pulse" : ""}`}>
                 {renderTeamLogo(match.team_b_id, true)}
                 <div style={teamNameBigStyle} className="match-team-name">
                   {getTeamName(match.team_b_id)}
@@ -2024,6 +2185,7 @@ const scoreBigStyle = {
   lineHeight: 1,
   color: "#ff1455",
   letterSpacing: "2px",
+  minHeight: "64px",
 };
 
 const phaseStyle = {
@@ -2105,7 +2267,7 @@ const motmCardStyle = {
   marginTop: "14px",
   display: "flex",
   alignItems: "center",
-  justifyContent: "center",
+  justifyContent: "flex-start",
   gap: "14px",
   padding: "10px",
   borderRadius: "16px",
@@ -2142,6 +2304,7 @@ const motmAvatarFallbackStyle = {
 
 const motmContentStyle = {
   textAlign: "left",
+  flex: 1,
 };
 
 const motmPlayerNameStyle = {

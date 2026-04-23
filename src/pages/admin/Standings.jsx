@@ -4,7 +4,6 @@ import { supabase } from "../../services/supabase";
 import {
   Trophy,
   ChevronDown,
-  ChevronRight,
   BarChart3,
   Users,
   Shield,
@@ -648,7 +647,7 @@ function Standings() {
     );
   };
 
-  const renderDrawMatchCard = (match, compact = false) => {
+  const renderDrawMatchCard = (match, compact = false, animationIndex = 0) => {
     const teamAName = getTeamNameById(match.team_a_id);
     const teamBName = getTeamNameById(match.team_b_id);
     const teamALogo = getTeamLogoById(match.team_a_id);
@@ -672,8 +671,11 @@ function Standings() {
         key={match.id}
         type="button"
         onClick={() => navigate(`/matches/${match.id}`)}
-        style={drawMatchCardButtonStyle}
-        className="draw-match-mobile"
+        style={{
+          ...drawMatchCardButtonStyle,
+          animationDelay: `${animationIndex * 70}ms`,
+        }}
+        className="draw-match-mobile draw-match-card-animated"
       >
         <div
           style={{
@@ -747,38 +749,33 @@ function Standings() {
 
   const renderDrawPair = (pair, index) => {
     return (
-      <div key={`pair-${index}`} style={drawPairWrapStyle} className="draw-pair-wrap">
+      <div
+        key={`pair-${index}`}
+        style={drawPairWrapStyle}
+        className="draw-pair-wrap draw-pair-animated"
+      >
         <div style={drawPairMatchesStyle}>
-          {pair.map((match) => renderDrawMatchCard(match, true))}
-        </div>
-
-        <div style={drawConnectorWrapStyle}>
-          <div style={drawConnectorLineStyle} />
-          <button
-            type="button"
-            onClick={() => {
-              const matchToOpen = pair[0];
-              if (matchToOpen?.id) {
-                navigate(`/matches/${matchToOpen.id}`);
-              }
-            }}
-            style={drawConnectorButtonStyle}
-            aria-label="Open match"
-          >
-            <ChevronRight size={22} strokeWidth={2.5} />
-          </button>
+          {pair.map((match, matchIndex) =>
+            renderDrawMatchCard(match, true, index * 2 + matchIndex)
+          )}
         </div>
       </div>
     );
   };
 
-  const renderFinalStageCard = (label, match) => {
+  const renderFinalStageCard = (label, match, animationIndex = 0) => {
     if (!match) return null;
 
     return (
-      <div style={finalStageBlockStyle}>
+      <div
+        style={{
+          ...finalStageBlockStyle,
+          animationDelay: `${animationIndex * 80}ms`,
+        }}
+        className="draw-final-card-animated"
+      >
         {label ? <div style={finalStageLabelStyle}>{label}</div> : null}
-        {renderDrawMatchCard(match)}
+        {renderDrawMatchCard(match, false, animationIndex)}
       </div>
     );
   };
@@ -838,6 +835,47 @@ function Standings() {
     <>
       <style>
         {`
+          .draw-match-card-animated {
+            opacity: 0;
+            transform: translateY(10px) scale(0.985);
+            animation: drawCardIn 0.38s ease forwards;
+            will-change: transform, opacity;
+          }
+
+          .draw-final-card-animated,
+          .draw-pair-animated {
+            opacity: 0;
+            transform: translateY(12px);
+            animation: drawCardIn 0.42s ease forwards;
+            will-change: transform, opacity;
+          }
+
+          @keyframes drawCardIn {
+            from {
+              opacity: 0;
+              transform: translateY(12px) scale(0.985);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0) scale(1);
+            }
+          }
+
+          .draw-match-card-animated > div {
+            transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease, background 0.22s ease;
+          }
+
+          .draw-match-card-animated:hover > div {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px rgba(17, 24, 39, 0.08);
+            border-color: #d6dbe3;
+            background: #ffffff;
+          }
+
+          .draw-match-card-animated:active > div {
+            transform: scale(0.992);
+          }
+
           @media (max-width: 768px) {
             .standings-page {
               padding: 14px !important;
@@ -934,8 +972,8 @@ function Standings() {
             }
 
             .draw-pair-wrap {
-              grid-template-columns: 1fr auto !important;
-              gap: 8px !important;
+              grid-template-columns: 1fr !important;
+              gap: 12px !important;
             }
           }
 
@@ -1298,8 +1336,8 @@ function Standings() {
                   <div style={emptyStateStyle}>No matches available for this stage yet.</div>
                 ) : (
                   <>
-                    {renderFinalStageCard("", finalMatch)}
-                    {renderFinalStageCard("3rd place", thirdPlaceMatch)}
+                    {renderFinalStageCard("", finalMatch, 0)}
+                    {renderFinalStageCard("3rd place", thirdPlaceMatch, 1)}
                   </>
                 )
               ) : groupedDrawMatches.length === 0 ? (
@@ -2003,41 +2041,14 @@ const drawScoreStyle = {
 
 const drawPairWrapStyle = {
   display: "grid",
-  gridTemplateColumns: "1fr auto",
-  gap: "10px",
-  alignItems: "center",
+  gridTemplateColumns: "1fr",
+  gap: "12px",
+  alignItems: "stretch",
 };
 
 const drawPairMatchesStyle = {
   display: "grid",
   gap: "12px",
-};
-
-const drawConnectorWrapStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "8px",
-  minWidth: "48px",
-};
-
-const drawConnectorLineStyle = {
-  width: "18px",
-  height: "1px",
-  background: "#d1d5db",
-};
-
-const drawConnectorButtonStyle = {
-  width: "40px",
-  height: "40px",
-  borderRadius: "10px",
-  background: "#f1f3f5",
-  border: "1px solid #e5e7eb",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  color: "#111827",
-  cursor: "pointer",
-  flexShrink: 0,
 };
 
 const finalStageBlockStyle = {

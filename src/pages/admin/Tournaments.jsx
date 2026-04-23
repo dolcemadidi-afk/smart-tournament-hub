@@ -1119,6 +1119,482 @@ function Tournaments() {
     return true;
   };
 
+
+  const getExistingGroupMatches = async (tournamentId) => {
+    const { data, error } = await supabase
+      .from("matches")
+      .select("*")
+      .eq("tournament_id", tournamentId)
+      .eq("stage", "group")
+      .order("round_number", { ascending: true })
+      .order("group_name", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    return { data: data || [], error };
+  };
+
+  const getOrderedKnockoutStageNames = (matches) => {
+    const uniqueStages = [...new Set(
+      (matches || [])
+        .map((match) => match.stage)
+        .filter((stage) => stage && stage !== "group")
+    )];
+
+    return uniqueStages.sort((a, b) => {
+      const aWeight =
+        a === "final" || a === "third_place" ? -1 : getStageTeamCount(a);
+      const bWeight =
+        b === "final" || b === "third_place" ? -1 : getStageTeamCount(b);
+      return bWeight - aWeight;
+    });
+  };
+
+  const prepareFirstKnockoutRoundSlots = async (tournamentId) => {
+    const { data: tournamentTeams, error: teamsError } = await supabase
+      .from("teams")
+      .select("*")
+      .eq("tournament_id", tournamentId);
+
+    if (teamsError) {
+      console.error("Error fetching teams:", teamsError.message);
+      alert(teamsError.message);
+      return null;
+    }
+
+    const { data: groupMatches, error: groupMatchesError } = await supabase
+      .from("matches")
+      .select("*")
+      .eq("tournament_id", tournamentId)
+      .eq("stage", "group");
+
+    if (groupMatchesError) {
+      console.error("Error fetching group matches:", groupMatchesError.message);
+      alert(groupMatchesError.message);
+      return null;
+    }
+
+    if (!groupMatches || groupMatches.length === 0) {
+      alert("Generate group matches first.");
+      return null;
+    }
+
+    const unfinishedGroupMatches = groupMatches.filter(
+      (match) => match.status !== "finished"
+    );
+
+    if (unfinishedGroupMatches.length > 0) {
+      alert("All group matches must be finished before generating knockout slots.");
+      return null;
+    }
+
+    const groupsMap = buildGroupStandings(tournamentTeams, groupMatches);
+    const knockoutPlan = buildSeededKnockoutTeams(groupsMap);
+
+    if (knockoutPlan.error) {
+      alert(knockoutPlan.error);
+      return null;
+    }
+
+    const qualifiedTeams = knockoutPlan.qualifiers || [];
+    const stageName = getKnockoutStageName(qualifiedTeams.length);
+
+    if (!isValidKnockoutSize(qualifiedTeams.length) || qualifiedTeams.length < 4) {
+      alert("Could not determine a valid knockout bracket size.");
+      return null;
+    }
+
+    const pairings = createSeededBracketPairings(qualifiedTeams);
+    const requiredSlots = pairings.length;
+
+    setQuarterfinalSlots((prev) => resizeSlots(prev, requiredSlots));
+    setActiveScheduleTournamentId(String(tournamentId));
+
+    return {
+      stageName,
+      requiredSlots,
+      qualifiedCount: qualifiedTeams.length,
+      addedThirdPlacedCount: knockoutPlan.addedThirdPlacedCount || 0,
+    };
+  };
+
+  const prepareNextKnockoutRoundSlots = async (tournamentId) => {
+    const { data: knockoutMatches, error: knockoutMatchesError } =
+      await getExistingKnockoutMatches(tournamentId);
+
+    if (knockoutMatchesError) {
+      console.error(
+        "Error fetching knockout matches:",
+        knockoutMatchesError.message
+      );
+      alert(knockoutMatchesError.message);
+      return null;
+    }
+
+    const stageNames = getOrderedKnockoutStageNames(knockoutMatches);
+    const playableStageNames = stageNames.filter(
+      (stage) => stage !== "final" && stage !== "third_place"
+    );
+
+    if (playableStageNames.length === 0) {
+      alert("Generate the first knockout round before loading more knockout slots.");
+      return null;
+    }
+
+    if (
+      stageNames.includes("final") ||
+      stageNames.includes("third_place")
+    ) {
+      alert("Final stage already exists for this tournament.");
+      return null;
+    }
+
+    const latestStageName = playableStageNames[playableStageNames.length - 1];
+    const latestStageMatches = (knockoutMatches || [])
+      .filter((match) => match.stage === latestStageName)
+      .sort((a, b) => Number(a.round_number || 0) - Number(b.round_number || 0));
+
+    if (latestStageMatches.some((match) => match.status !== "finished")) {
+      alert("All matches in the current knockout round must be finished first.");
+      return null;
+    }
+
+    if (latestStageMatches.some((match) => !match.winner_team_id)) {
+      alert("Each knockout match must have winner_team_id filled.");
+      return null;
+    }
+
+    const winners = latestStageMatches
+      .map((match) => ({
+        team_id: match.winner_team_id,
+        source_match_id: match.id,
+      }))
+      .filter((item) => item.team_id);
+
+    if (winners.length <= 2) {
+      setActiveScheduleTournamentId(String(tournamentId));
+      return {
+        type: "final_stage",
+        requiredSlots: 2,
+      };
+    }
+
+    const nextStageName = getKnockoutStageName(winners.length);
+    const stageAlreadyExists = (knockoutMatches || []).some(
+      (match) => match.stage === nextStageName
+    );
+
+    if (stageAlreadyExists) {
+      alert("The next knockout round already exists for this tournament.");
+      return null;
+    }
+
+    const requiredSlots = Math.floor(winners.length / 2);
+    setSemifinalSlots((prev) => resizeSlots(prev, requiredSlots));
+    setActiveScheduleTournamentId(String(tournamentId));
+
+    return {
+      type: "next_round",
+      stageName: nextStageName,
+      requiredSlots,
+      winnerCount: winners.length,
+    };
+  };
+
+  const handleGenerateAllSlots = async (tournamentId) => {
+    setActiveScheduleTournamentId(String(tournamentId));
+
+    const { data: groupMatches, error: groupMatchesError } =
+      await getExistingGroupMatches(tournamentId);
+
+    if (groupMatchesError) {
+      console.error(
+        "Error checking existing group matches:",
+        groupMatchesError.message
+      );
+      alert(groupMatchesError.message);
+      return;
+    }
+
+    if (!groupMatches || groupMatches.length === 0) {
+      const prepared = await prepareGroupStageSchedule(tournamentId);
+      if (!prepared) return;
+
+      alert(
+        `Group slots are ready. Round 1: ${prepared.requiredSlotsPerBucket[0]}, Round 2: ${prepared.requiredSlotsPerBucket[1]}, Round 3: ${prepared.requiredSlotsPerBucket[2]}. Fill date, time, and field, then click Generate Group Matches.`
+      );
+      return;
+    }
+
+    const { data: knockoutMatches, error: knockoutMatchesError } =
+      await getExistingKnockoutMatches(tournamentId);
+
+    if (knockoutMatchesError) {
+      console.error(
+        "Error checking knockout matches:",
+        knockoutMatchesError.message
+      );
+      alert(knockoutMatchesError.message);
+      return;
+    }
+
+    if ((knockoutMatches || []).length === 0) {
+      const prepared = await prepareFirstKnockoutRoundSlots(tournamentId);
+      if (!prepared) return;
+
+      const firstStageLabel =
+        prepared.stageName === "quarterfinal"
+          ? "Quarterfinal"
+          : prepared.stageName === "semifinal"
+          ? "Semifinal"
+          : prepared.stageName === "final"
+          ? "Final"
+          : String(prepared.stageName).replaceAll("_", " ");
+
+      alert(
+        `${firstStageLabel} slots are ready. ${prepared.requiredSlots} match slots loaded for ${prepared.qualifiedCount} qualified teams${prepared.addedThirdPlacedCount ? `, including ${prepared.addedThirdPlacedCount} best 3rd-placed teams` : ""}. Fill date, time, and field, then generate the knockout round.`
+      );
+      return;
+    }
+
+    const prepared = await prepareNextKnockoutRoundSlots(tournamentId);
+    if (!prepared) return;
+
+    if (prepared.type === "final_stage") {
+      alert(
+        "Final stage slots are ready. Fill Final and 3rd Place date, time, and field, then click Generate Final Stage."
+      );
+      return;
+    }
+
+    const nextStageLabel =
+      prepared.stageName === "quarterfinal"
+        ? "Quarterfinal"
+        : prepared.stageName === "semifinal"
+        ? "Semifinal"
+        : prepared.stageName === "final"
+        ? "Final"
+        : String(prepared.stageName).replaceAll("_", " ");
+
+    alert(
+      `${nextStageLabel} slots are ready. ${prepared.requiredSlots} match slots loaded. Fill date, time, and field, then generate the next knockout round.`
+    );
+  };
+
+  const getKnockoutScheduleIssues = ({ firstStageMatches = [], secondStageMatches = [], finalMatch, thirdPlaceMatch }) => {
+    const issues = [];
+
+    if (firstStageMatches.length > 0) {
+      if (!quarterfinalDate) {
+        issues.push("First knockout round date is required.");
+      } else if (quarterfinalDate < today) {
+        issues.push("First knockout round date cannot be in the past.");
+      }
+
+      for (let index = 0; index < firstStageMatches.length; index += 1) {
+        const slot = quarterfinalSlots[index] || { time: "", field: "" };
+        if (!slot.time || !slot.field) {
+          issues.push(`First knockout round - Match ${index + 1} needs time and field.`);
+          break;
+        }
+      }
+    }
+
+    if (secondStageMatches.length > 0) {
+      if (!semifinalDate) {
+        issues.push("Next knockout round date is required.");
+      } else if (semifinalDate < today) {
+        issues.push("Next knockout round date cannot be in the past.");
+      }
+
+      for (let index = 0; index < secondStageMatches.length; index += 1) {
+        const slot = semifinalSlots[index] || { time: "", field: "" };
+        if (!slot.time || !slot.field) {
+          issues.push(`Next knockout round - Match ${index + 1} needs time and field.`);
+          break;
+        }
+      }
+    }
+
+    if (finalMatch) {
+      if (!finalDate) {
+        issues.push("Final date is required.");
+      } else if (finalDate < today) {
+        issues.push("Final date cannot be in the past.");
+      }
+
+      if (!finalSlot.time || !finalSlot.field) {
+        issues.push("Final match needs time and field.");
+      }
+    }
+
+    if (thirdPlaceMatch) {
+      if (!thirdPlaceDate) {
+        issues.push("3rd Place date is required.");
+      } else if (thirdPlaceDate < today) {
+        issues.push("3rd Place date cannot be in the past.");
+      }
+
+      if (!thirdPlaceSlot.time || !thirdPlaceSlot.field) {
+        issues.push("3rd Place match needs time and field.");
+      }
+    }
+
+    return issues;
+  };
+
+  const handleUpdateKnockoutMatchSchedule = async (tournamentId) => {
+    const { data: knockoutMatches, error: knockoutMatchesError } =
+      await getExistingKnockoutMatches(tournamentId);
+
+    if (knockoutMatchesError) {
+      console.error(
+        "Error fetching knockout matches:",
+        knockoutMatchesError.message
+      );
+      alert(knockoutMatchesError.message);
+      return;
+    }
+
+    if (!knockoutMatches || knockoutMatches.length === 0) {
+      alert("No knockout matches exist yet.");
+      return;
+    }
+
+    const orderedPlayableStages = getOrderedKnockoutStageNames(knockoutMatches).filter(
+      (stage) => stage !== "final" && stage !== "third_place"
+    );
+
+    const firstStageName = orderedPlayableStages[0] || null;
+    const secondStageName = orderedPlayableStages[1] || null;
+
+    const firstStageMatches = firstStageName
+      ? knockoutMatches
+          .filter((match) => match.stage === firstStageName)
+          .sort((a, b) => Number(a.round_number || 0) - Number(b.round_number || 0))
+      : [];
+
+    const secondStageMatches = secondStageName
+      ? knockoutMatches
+          .filter((match) => match.stage === secondStageName)
+          .sort((a, b) => Number(a.round_number || 0) - Number(b.round_number || 0))
+      : [];
+
+    const finalMatch = knockoutMatches.find((match) => match.stage === "final") || null;
+    const thirdPlaceMatch =
+      knockoutMatches.find((match) => match.stage === "third_place") || null;
+
+    const scheduleIssues = getKnockoutScheduleIssues({
+      firstStageMatches,
+      secondStageMatches,
+      finalMatch,
+      thirdPlaceMatch,
+    });
+
+    if (scheduleIssues.length > 0) {
+      alert(scheduleIssues[0]);
+      return;
+    }
+
+    const updates = [];
+
+    firstStageMatches.forEach((match, index) => {
+      const slot = quarterfinalSlots[index] || { time: "", field: "" };
+      updates.push({
+        id: match.id,
+        match_date: quarterfinalDate,
+        match_time: slot.time || null,
+        field: slot.field || null,
+      });
+    });
+
+    secondStageMatches.forEach((match, index) => {
+      const slot = semifinalSlots[index] || { time: "", field: "" };
+      updates.push({
+        id: match.id,
+        match_date: semifinalDate,
+        match_time: slot.time || null,
+        field: slot.field || null,
+      });
+    });
+
+    if (finalMatch) {
+      updates.push({
+        id: finalMatch.id,
+        match_date: finalDate,
+        match_time: finalSlot.time || null,
+        field: finalSlot.field || null,
+      });
+    }
+
+    if (thirdPlaceMatch) {
+      updates.push({
+        id: thirdPlaceMatch.id,
+        match_date: thirdPlaceDate,
+        match_time: thirdPlaceSlot.time || null,
+        field: thirdPlaceSlot.field || null,
+      });
+    }
+
+    for (const update of updates) {
+      const { error } = await supabase
+        .from("matches")
+        .update({
+          match_date: update.match_date,
+          match_time: update.match_time,
+          field: update.field,
+        })
+        .eq("id", update.id);
+
+      if (error) {
+        console.error("Error updating knockout match schedule:", error.message);
+        alert(error.message);
+        return;
+      }
+    }
+
+    setActiveScheduleTournamentId(String(tournamentId));
+    alert("Knockout match schedule updated successfully.");
+  };
+
+  const handleUpdateAllMatchSchedule = async (tournamentId) => {
+    const { data: groupMatches, error: groupMatchesError } =
+      await getExistingGroupMatches(tournamentId);
+
+    if (groupMatchesError) {
+      console.error(
+        "Error checking existing group matches:",
+        groupMatchesError.message
+      );
+      alert(groupMatchesError.message);
+      return;
+    }
+
+    const { data: knockoutMatches, error: knockoutMatchesError } =
+      await getExistingKnockoutMatches(tournamentId);
+
+    if (knockoutMatchesError) {
+      console.error(
+        "Error checking knockout matches:",
+        knockoutMatchesError.message
+      );
+      alert(knockoutMatchesError.message);
+      return;
+    }
+
+    if (groupMatches.length > 0 && knockoutMatches.length === 0) {
+      await handleUpdateGroupMatchSchedule(tournamentId);
+      return;
+    }
+
+    if (knockoutMatches.length > 0) {
+      await handleUpdateKnockoutMatchSchedule(tournamentId);
+      return;
+    }
+
+    alert("No generated matches exist yet for this tournament.");
+  };
+
+
   const handlePrepareGroupStageSchedule = async (tournamentId) => {
     setActiveScheduleTournamentId(String(tournamentId));
 
@@ -2456,8 +2932,8 @@ function Tournaments() {
                       <ActionButton
                         color="#109847"
                         icon={<CalendarDays size={15} />}
-                        label="Load Group Slots"
-                        onClick={() => handlePrepareGroupStageSchedule(t.id)}
+                        label="Generate Match Slots"
+                        onClick={() => handleGenerateAllSlots(t.id)}
                       />
                       <ActionButton
                         color="#16a34a"
@@ -2468,8 +2944,8 @@ function Tournaments() {
                       <ActionButton
                         color="#0f766e"
                         icon={<Pencil size={15} />}
-                        label="Update Group Schedule"
-                        onClick={() => handleUpdateGroupMatchSchedule(t.id)}
+                        label="Update Match Schedule"
+                        onClick={() => handleUpdateAllMatchSchedule(t.id)}
                       />
                       <ActionButton
                         color="#7c3aed"

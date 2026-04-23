@@ -387,14 +387,45 @@ function Matches() {
     return groups;
   }, [sortedMatches]);
 
+  const knockoutPriority = [
+    "final",
+    "third_place",
+    "semifinal",
+    "quarterfinal",
+    "round_of_16",
+    "round_of_32",
+    "round_of_64",
+    "round_5",
+    "round_4",
+    "round_3",
+    "round_2",
+    "round_1",
+  ];
+
   const orderedStageKeys = useMemo(() => {
-    const existingDynamicStages = Object.keys(groupedMatches).filter(
-      (stageKey) =>
-        !stageOrder.includes(stageKey) &&
-        groupedMatches[stageKey]?.length > 0
+    const allStages = Object.keys(groupedMatches).filter(
+      (stageKey) => groupedMatches[stageKey]?.length > 0
     );
 
-    return [...stageOrder, ...existingDynamicStages];
+    const knockoutStages = allStages.filter((stageKey) =>
+      knockoutPriority.includes(stageKey)
+    );
+
+    const groupStages = allStages.filter((stageKey) => stageKey === "group");
+
+    const otherStages = allStages.filter(
+      (stageKey) => !knockoutPriority.includes(stageKey) && stageKey !== "group"
+    );
+
+    const sortedKnockout = knockoutStages.sort(
+      (a, b) => knockoutPriority.indexOf(a) - knockoutPriority.indexOf(b)
+    );
+
+    const sortedOtherStages = otherStages.sort((a, b) =>
+      String(a).localeCompare(String(b))
+    );
+
+    return [...sortedKnockout, ...sortedOtherStages, ...groupStages];
   }, [groupedMatches]);
 
   const getStageLabel = (stageKey) => {
